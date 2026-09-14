@@ -1,0 +1,158 @@
+# ログ（仮称）— 時間とお金の記録
+
+勉強も趣味も支出も、ユーザーが自由に作ったタグでまとめて記録する PWA。
+現在は **Phase 1 の前半**（時間の記録・タグ・バックアップ）まで実装済み。
+
+---
+
+## 動かす
+
+```bash
+npm install
+npm run dev
+```
+
+表示された `http://localhost:5173/` を開く。
+同じ Wi-Fi のスマホから試すときは `npm run dev -- --host` で起動し、
+表示される `http://192.168.x.x:5173/` にスマホでアクセスする。
+
+## GitHub Pages で公開する（推奨）
+
+push するだけで自動ビルド・自動公開される。手元でビルドする必要はない。
+
+### 手順（初回のみ）
+
+1. GitHub で新しいリポジトリを作る（**Public** にする。Private で Pages を使うには有料プランが必要）
+2. このフォルダを push する
+
+   ```bash
+   git init
+   git add .
+   git commit -m "初回"
+   git branch -M main
+   git remote add origin https://github.com/ユーザー名/リポジトリ名.git
+   git push -u origin main
+   ```
+
+3. GitHub のリポジトリページで **Settings → Pages** を開き、
+   **Source** を「**GitHub Actions**」に変更する（「Deploy from a branch」ではない）
+
+これで完了。以降は `git push` するたびに 1〜2 分で反映される。
+公開 URL は `https://ユーザー名.github.io/リポジトリ名/`。
+進行状況はリポジトリの **Actions** タブで見られる。
+
+### スマホに入れる
+
+公開 URL をスマホで開き、
+
+- iPhone … Safari で共有ボタン →「ホーム画面に追加」
+- Android … Chrome のメニュー →「アプリをインストール」
+
+ホーム画面から起動すると、アドレスバーのない単体アプリとして動き、オフラインでも開ける。
+アプリを更新したときは、次に開いたタイミングで自動的に新しい版に入れ替わる。
+
+> **iOS では必ずホーム画面に追加してください。** Safari のタブのままだと、しばらく使わないときに
+> ブラウザが保存データを破棄することがあります。設定画面の「JSONで書き出す」も併用してください。
+
+### ベースパスについて（ハマりどころ）
+
+GitHub Pages は `https://ユーザー名.github.io/リポジトリ名/` というサブパスで配信される。
+ここを `/` のまま作ると、JS もサービスワーカーも読み込めず PWA として動かない。
+
+`vite.config.ts` の `resolveBase()` が GitHub Actions の環境変数から自動で判定するので、
+**リポジトリ名が何であっても設定を書き換える必要はない**。
+
+| 置き場所 | 自動で決まるベースパス |
+| --- | --- |
+| `ユーザー名/リポジトリ名` | `/リポジトリ名/` |
+| `ユーザー名/ユーザー名.github.io` | `/` |
+| ローカル開発 | `/` |
+| Netlify・Vercel など | `BASE_PATH=/ npm run build` |
+
+### 検証済み
+
+サブパス配信（`/lifelog/`）で次を確認済み。
+
+- サービスワーカーが `scope: /lifelog/` で登録される
+- manifest の `start_url` / `scope` / アイコンがすべて解決する
+- **機内モードでもアプリが起動し、計測が継続している**
+- コンソールエラーなし
+
+## 別の場所に置く場合
+
+```bash
+BASE_PATH=/ npm run build
+```
+
+生成された `dist/` を [Netlify Drop](https://app.netlify.com/drop) にドラッグすれば、
+アカウントなしで HTTPS の URL が出る（使い捨ての確認用に便利）。
+
+---
+
+## タイマーの仕組み（ここが設計の肝）
+
+**経過秒数を数えて保存する実装はしていない。** 保存しているのは「開始した絶対時刻」だけで、
+経過時間は表示のたびに `Date.now()` との差分で算出している（`src/timer/useTimer.ts`）。
+
+そのため次がすべて成立する。
+
+- 画面を消しても計測は続く
+- アプリをスワイプで終了しても計測は続く
+- 端末を再起動しても、開き直せば正しい経過時間が出る
+- ブラウザがタブを破棄しても影響しない
+
+`setInterval` は画面の再描画にしか使っていないので、それが止まっても時間は失われない。
+バックグラウンドから復帰した瞬間（`visibilitychange` / `pageshow` / `focus`）に必ず再計算する。
+
+止め忘れ対策として、設定した時間（既定 8 時間）を超えると終了時刻を手で直せる導線が出る。
+
+### 検証済みの挙動
+
+| 確認内容 | 結果 |
+| --- | --- |
+| 計測中にアプリを閉じ、6 秒後に開き直す | 経過時間が 8 秒進んでいる |
+| 一時停止してアプリを閉じ、5 秒後に開き直す | 進まない |
+| 終了 → 記録への変換 | 保存される |
+
+---
+
+## データ
+
+すべて端末内の IndexedDB（Dexie）に保存され、外部には一切送信されない。
+
+全テーブルが `id (UUID)` / `createdAt` / `updatedAt` / `deletedAt` を持つ。
+削除は物理削除せず `deletedAt` に時刻を入れる（tombstone）。
+Phase 3 でクラウド同期を足すときにスキーマを作り直さずに済ませるための設計。
+
+バックアップの読み込みも「同じ id なら `updatedAt` が新しい方を残す」方式にしてあり、
+これはそのまま同期の衝突解決規則になる。
+
+| テーブル | 内容 |
+| --- | --- |
+| `tags` | 統合の背骨。時間の記録にも支出にも共通で付く |
+| `groups` | タグの分類。名前はユーザーが自由に決める（プリセットなし） |
+| `sessions` | 時間の記録 |
+| `transactions` / `categories` | 支出（スキーマのみ、画面は次フェーズ） |
+| `settings` / `activeTimer` | 単一レコード |
+
+---
+
+## 構成
+
+```
+src/
+  db/        types.ts / db.ts / repo.ts / backup.ts
+  timer/     useTimer.ts      ← 絶対時刻方式の計測ロジック
+  screens/   TimerScreen / RecordsScreen / TagsScreen / SettingsScreen
+  components/ ui.tsx / TagPicker.tsx
+  lib/       time.ts
+```
+
+Vite + React + TypeScript / Dexie (IndexedDB) / Tailwind CSS v4 / vite-plugin-pwa
+
+## 次に実装するもの
+
+1. 支出の記録（入力の速さを作り込む）
+2. タグ別サマリー — タグごとの累計時間と累計金額
+3. バランスビュー — グループ別の時間とお金の配分
+4. 分析グラフ（カテゴリ別・日次推移）

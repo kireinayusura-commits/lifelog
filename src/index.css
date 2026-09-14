@@ -1,0 +1,113 @@
+@import 'tailwindcss';
+
+:root {
+  /* 面 */
+  --c-paper: #f0f1f4;
+  --c-surface: #ffffff;
+  --c-surface2: #f7f8fa;
+  /* 文字 */
+  --c-ink: #15171e;
+  --c-ink2: #3d434f;
+  --c-muted: #6a7282;
+  /* 線 */
+  --c-rule: #d9dce3;
+  --c-rule-soft: #e6e8ed;
+  /* 時間（寒色）/ お金（暖色） */
+  --c-time: #2f4bc4;
+  --c-time-soft: #e4e8fa;
+  --c-money: #a85328;
+  --c-money-soft: #f7e7dc;
+  /* 状態 */
+  --c-good: #2f7d5b;
+  --c-warn: #9a6b12;
+  --c-warn-soft: #fbf0d8;
+  --c-danger: #b3382f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --c-paper: #111319;
+    --c-surface: #191c23;
+    --c-surface2: #1f232b;
+    --c-ink: #e9ebf0;
+    --c-ink2: #bcc2ce;
+    --c-muted: #8a93a3;
+    --c-rule: #2c313b;
+    --c-rule-soft: #242932;
+    --c-time: #93a6f7;
+    --c-time-soft: #1e2440;
+    --c-money: #e09468;
+    --c-money-soft: #3a2618;
+    --c-good: #63bb91;
+    --c-warn: #d9ac57;
+    --c-warn-soft: #332a14;
+    --c-danger: #ef8078;
+  }
+}
+
+@theme inline {
+  --color-paper: var(--c-paper);
+  --color-surface: var(--c-surface);
+  --color-surface2: var(--c-surface2);
+  --color-ink: var(--c-ink);
+  --color-ink2: var(--c-ink2);
+  --color-muted: var(--c-muted);
+  --color-rule: var(--c-rule);
+  --color-rulesoft: var(--c-rule-soft);
+  --color-time: var(--c-time);
+  --color-timesoft: var(--c-time-soft);
+  --color-money: var(--c-money);
+  --color-moneysoft: var(--c-money-soft);
+  --color-good: var(--c-good);
+  --color-warn: var(--c-warn);
+  --color-warnsoft: var(--c-warn-soft);
+  --color-danger: var(--c-danger);
+
+  --font-sans:
+    'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Noto Sans JP', system-ui,
+    -apple-system, 'Segoe UI', sans-serif;
+}
+
+html {
+  color-scheme: light dark;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--c-paper);
+  color: var(--c-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+/* iOS のホーム画面起動時にセーフエリアを確保する */
+.safe-top {
+  padding-top: max(env(safe-area-inset-top), 8px);
+}
+.safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom), 8px);
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+:focus-visible {
+  outline: 2px solid var(--c-time);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
