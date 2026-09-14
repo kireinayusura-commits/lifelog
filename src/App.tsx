@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { seedIfEmpty } from './db/repo'
 import { TimerScreen } from './screens/TimerScreen'
+import { ExpenseScreen } from './screens/ExpenseScreen'
 import { RecordsScreen } from './screens/RecordsScreen'
 import { TagsScreen } from './screens/TagsScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { useTimer } from './timer/useTimer'
 import { formatClock } from './lib/time'
 
-type TabId = 'timer' | 'records' | 'tags' | 'settings'
+type TabId = 'timer' | 'expense' | 'records' | 'tags' | 'settings'
 
 function Icon({ id, active }: { id: TabId; active: boolean }) {
   return (
@@ -27,6 +28,12 @@ function Icon({ id, active }: { id: TabId; active: boolean }) {
           <path d="M12 9v4l2.5 2M9 2h6" />
         </>
       )}
+      {id === 'expense' && (
+        <>
+          <rect x="2.8" y="6" width="18.4" height="12.5" rx="2.2" />
+          <path d="M9.6 12.3h4.8M12 10v5.2M10.2 10.1 12 12m1.8-1.9L12 12" />
+        </>
+      )}
       {id === 'records' && <path d="M5 4h14v16H5zM8.5 9h7M8.5 13h7M8.5 17h4" />}
       {id === 'tags' && (
         <>
@@ -41,6 +48,7 @@ function Icon({ id, active }: { id: TabId; active: boolean }) {
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'timer', label: 'タイマー' },
+  { id: 'expense', label: '支出' },
   { id: 'records', label: '記録' },
   { id: 'tags', label: 'タグ' },
   { id: 'settings', label: '設定' },
@@ -58,6 +66,7 @@ export default function App() {
     <div className="min-h-dvh bg-paper">
       <main className="mx-auto max-w-lg">
         {tab === 'timer' && <TimerScreen />}
+        {tab === 'expense' && <ExpenseScreen />}
         {tab === 'records' && <RecordsScreen />}
         {tab === 'tags' && <TagsScreen />}
         {tab === 'settings' && <SettingsScreen />}
