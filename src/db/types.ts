@@ -39,20 +39,18 @@ export interface Session extends Base {
   source: 'timer' | 'manual'
 }
 
-/** 支出カテゴリ（Phase 1 後半で使用） */
-export interface Category extends Base {
-  name: string
-  color: string
-}
-
-/** 支出・収入（Phase 1 後半で使用） */
+/**
+ * 支出。カテゴリは持たせず、名称・金額・タグの3つだけで扱う。
+ * レジの前で開いたときに入力が1ステップでも増えると続かないため、
+ * 分類は時間の記録と共通のタグに任せる。
+ */
 export interface Transaction extends Base {
   amount: number
   type: 'expense' | 'income'
-  categoryId: Id | null
   tagId: Id | null
-  date: string
-  memo: string
+  name: string
+  /** 発生時刻。時間の記録と同じ絶対時刻で持ち、統合タイムラインで並べられるようにする。 */
+  occurredAt: number
 }
 
 export interface Settings {

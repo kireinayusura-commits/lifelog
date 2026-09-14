@@ -1,5 +1,5 @@
 import { db } from './db'
-import type { Base, Group, Id, Session, Tag } from './types'
+import type { Base, Group, Id, Session, Tag, Transaction } from './types'
 import { TAG_COLORS } from './types'
 
 export function newId(): Id {
@@ -126,6 +126,38 @@ export async function updateSession(id: Id, patch: Partial<Session>): Promise<vo
 export async function deleteSession(id: Id): Promise<void> {
   const now = Date.now()
   await db.sessions.update(id, { deletedAt: now, updatedAt: now })
+}
+
+// ---------- 支出 ----------
+
+export async function createTransaction(input: {
+  amount: number
+  name: string
+  tagId: Id | null
+  occurredAt?: number
+}): Promise<Id> {
+  const t: Transaction = {
+    ...stamp(),
+    amount: Math.round(input.amount),
+    type: 'expense',
+    tagId: input.tagId,
+    name: input.name.trim(),
+    occurredAt: input.occurredAt ?? Date.now(),
+  }
+  await db.transactions.add(t)
+  return t.id
+}
+
+export async function updateTransaction(id: Id, patch: Partial<Transaction>): Promise<void> {
+  const next: Partial<Transaction> = { ...patch, updatedAt: Date.now() }
+  if (patch.amount !== undefined) next.amount = Math.round(patch.amount)
+  if (patch.name !== undefined) next.name = patch.name.trim()
+  await db.transactions.update(id, next)
+}
+
+export async function deleteTransaction(id: Id): Promise<void> {
+  const now = Date.now()
+  await db.transactions.update(id, { deletedAt: now, updatedAt: now })
 }
 
 // ---------- 初回起動 ----------

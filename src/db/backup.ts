@@ -16,11 +16,10 @@ export interface Backup {
  * 手動バックアップを最初から用意しておく。
  */
 export async function exportBackup(): Promise<Backup> {
-  const [groups, tags, sessions, categories, transactions, settings] = await Promise.all([
+  const [groups, tags, sessions, transactions, settings] = await Promise.all([
     db.groups.toArray(),
     db.tags.toArray(),
     db.sessions.toArray(),
-    db.categories.toArray(),
     db.transactions.toArray(),
     getSettings(),
   ])
@@ -28,7 +27,7 @@ export async function exportBackup(): Promise<Backup> {
     format: FORMAT,
     version: FORMAT_VERSION,
     exportedAt: Date.now(),
-    data: { groups, tags, sessions, categories, transactions, settings: [settings] },
+    data: { groups, tags, sessions, transactions, settings: [settings] },
   }
 }
 
@@ -71,7 +70,6 @@ export async function importBackup(json: unknown): Promise<ImportResult> {
     ['groups', db.groups],
     ['tags', db.tags],
     ['sessions', db.sessions],
-    ['categories', db.categories],
     ['transactions', db.transactions],
   ] as const
 

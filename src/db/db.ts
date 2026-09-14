@@ -1,27 +1,18 @@
 import Dexie, { type Table } from 'dexie'
-import type {
-  ActiveTimer,
-  Category,
-  Group,
-  Session,
-  Settings,
-  Tag,
-  Transaction,
-} from './types'
+import type { ActiveTimer, Group, Session, Settings, Tag, Transaction } from './types'
 
 export class LifeLogDB extends Dexie {
   groups!: Table<Group, string>
   tags!: Table<Tag, string>
   sessions!: Table<Session, string>
-  categories!: Table<Category, string>
   transactions!: Table<Transaction, string>
   settings!: Table<Settings, string>
   activeTimer!: Table<ActiveTimer, string>
 
   constructor() {
     super('lifelog')
-    // スキーマを変えるときは version を上げて upgrade() を足す。
-    // 既存ユーザーのデータを消さずに移行できる。
+
+    // version(1) — 時間の記録まで
     this.version(1).stores({
       groups: 'id, order, updatedAt, deletedAt',
       tags: 'id, groupId, order, updatedAt, deletedAt',
@@ -30,6 +21,16 @@ export class LifeLogDB extends Dexie {
       transactions: 'id, date, tagId, categoryId, updatedAt, deletedAt',
       settings: 'id',
       activeTimer: 'id',
+    })
+
+    // version(2) — 支出を 名称・金額・タグ に整理。
+    // カテゴリは使わないことにしたので categories を削除し（null を指定すると消える）、
+    // 支出は時間の記録と同じ絶対時刻で並べられるよう occurredAt で索引する。
+    // 変更したストアだけ書けばよく、他はそのまま引き継がれる。
+    // 既にアプリを入れている端末でも、次に開いたときに自動で移行される。
+    this.version(2).stores({
+      transactions: 'id, occurredAt, tagId, updatedAt, deletedAt',
+      categories: null,
     })
   }
 }
