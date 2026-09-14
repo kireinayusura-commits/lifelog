@@ -4,6 +4,7 @@ import { db } from '../db/db'
 import { alive, createSession, deleteSession, updateSession } from '../db/repo'
 import { useTags, TagPicker } from '../components/TagPicker'
 import { ExpenseEditModal } from '../components/ExpenseEditModal'
+import { AnalyticsView } from './AnalyticsView'
 import { Button, Card, Dot, Field, Modal, Screen, inputClass } from '../components/ui'
 import type { Session, Transaction } from '../db/types'
 import { formatYen } from '../lib/money'
@@ -45,6 +46,7 @@ export function RecordsScreen() {
   const tags = useTags()
   const [draft, setDraft] = useState<Draft | null>(null)
   const [editingTx, setEditingTx] = useState<Transaction | null>(null)
+  const [view, setView] = useState<'list' | 'chart'>('list')
 
   /** 時間と支出を1本の履歴にまとめる。共通タグの効果はここで一番はっきり出る。 */
   const days = useMemo(() => {
@@ -107,12 +109,36 @@ export function RecordsScreen() {
     <Screen
       title="記録"
       action={
-        <Button onClick={() => setDraft(emptyDraft())} className="px-3 py-1.5 text-[13.5px]">
-          + 時間を追加
-        </Button>
+        view === 'list' ? (
+          <Button onClick={() => setDraft(emptyDraft())} className="px-3 py-1.5 text-[13.5px]">
+            + 時間を追加
+          </Button>
+        ) : undefined
       }
     >
-      {days.length === 0 ? (
+      <div className="mb-4 flex rounded-xl border border-rule bg-surface p-1">
+        {(
+          [
+            ['list', '履歴'],
+            ['chart', 'グラフ'],
+          ] as const
+        ).map(([v, label]) => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            aria-pressed={view === v}
+            className={`flex-1 rounded-lg py-2 text-[13.5px] font-semibold ${
+              view === v ? 'bg-surface2 text-ink' : 'text-muted'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'chart' ? (
+        <AnalyticsView />
+      ) : days.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-rule px-5 py-10 text-center text-[13.5px] leading-relaxed text-muted">
           まだ記録がありません。
           <br />
