@@ -14,11 +14,13 @@ import { useGroups, useTags } from '../components/TagPicker'
 import { Button, Card, Dot, Field, Modal, Screen, inputClass } from '../components/ui'
 import { TAG_COLORS } from '../db/types'
 import { formatDuration } from '../lib/time'
+import { formatYen } from '../lib/money'
 
 export function TagsScreen() {
   const tags = useTags()
   const groups = useGroups()
   const sessions = useLiveQuery(() => db.sessions.toArray(), [], undefined)
+  const transactions = useLiveQuery(() => db.transactions.toArray(), [], undefined)
 
   const [tagModal, setTagModal] = useState<{
     id: string | null
@@ -28,14 +30,22 @@ export function TagsScreen() {
   } | null>(null)
   const [groupModal, setGroupModal] = useState<{ id: string | null; name: string } | null>(null)
 
+  /** タグごとの「投じた時間」と「投じたお金」。共通タグにした意味がここに出る。 */
   const totals = useMemo(() => {
-    const m = new Map<string, number>()
+    const m = new Map<string, { sec: number; yen: number }>()
+    const bucket = (id: string) => {
+      let b = m.get(id)
+      if (!b) m.set(id, (b = { sec: 0, yen: 0 }))
+      return b
+    }
     for (const s of alive(sessions)) {
-      if (!s.tagId) continue
-      m.set(s.tagId, (m.get(s.tagId) ?? 0) + s.durationSec)
+      if (s.tagId) bucket(s.tagId).sec += s.durationSec
+    }
+    for (const t of alive(transactions)) {
+      if (t.tagId) bucket(t.tagId).yen += t.amount
     }
     return m
-  }, [sessions])
+  }, [sessions, transactions])
 
   const sections = useMemo(() => {
     const out: { key: string; name: string | null; items: typeof tags }[] = []
@@ -83,8 +93,8 @@ export function TagsScreen() {
       }
     >
       <p className="mb-4 text-[12.5px] leading-relaxed text-muted">
-        タグは時間の記録にも支出にも共通で使います。グループ名もタグ名も自由につけられます
-        — 科目で分けても、ジャンルで分けても構いません。
+        タグは時間の記録にも支出にも共通で使います。右側は、そのタグに投じた時間と金額の累計です。
+        グループ名もタグ名も自由につけられます — 科目で分けても、ジャンルで分けても構いません。
       </p>
 
       <div className="flex flex-col gap-5">
@@ -113,23 +123,32 @@ export function TagsScreen() {
               </div>
             ) : (
               <Card className="divide-y divide-rulesoft">
-                {sec.items.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() =>
-                      setTagModal({ id: t.id, name: t.name, groupId: t.groupId, color: t.color })
-                    }
-                    className="flex w-full items-center gap-3 px-4 py-3 text-left"
-                  >
-                    <Dot color={t.color} />
-                    <span className="min-w-0 flex-1 truncate text-[14.5px] font-medium">
-                      {t.name}
-                    </span>
-                    <span className="tnum text-[13px] text-muted">
-                      {totals.get(t.id) ? formatDuration(totals.get(t.id)!) : '—'}
-                    </span>
-                  </button>
-                ))}
+                {sec.items.map((t) => {
+                  const tot = totals.get(t.id)
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() =>
+                        setTagModal({ id: t.id, name: t.name, groupId: t.groupId, color: t.color })
+                      }
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left"
+                    >
+                      <Dot color={t.color} />
+                      <span className="min-w-0 flex-1 truncate text-[14.5px] font-medium">
+                        {t.name}
+                      </span>
+                      <span className="tnum flex shrink-0 items-baseline gap-2.5 text-[13px] font-semibold">
+                        {tot?.sec ? (
+                          <span className="text-time">{formatDuration(tot.sec)}</span>
+                        ) : null}
+                        {tot?.yen ? <span className="text-money">{formatYen(tot.yen)}</span> : null}
+                        {!tot?.sec && !tot?.yen ? (
+                          <span className="font-normal text-muted">—</span>
+                        ) : null}
+                      </span>
+                    </button>
+                  )
+                })}
               </Card>
             )}
           </section>

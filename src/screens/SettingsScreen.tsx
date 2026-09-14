@@ -93,8 +93,8 @@ export function SettingsScreen() {
         <h2 className="mb-2 px-1 text-[13px] font-bold">このバージョンについて</h2>
         <Card className="px-4 py-4">
           <p className="text-[13px] leading-relaxed text-ink2">
-            Phase 1 の途中です。時間の記録・タグ・バックアップまでが動きます。
-            支出の記録と分析グラフはこの次に実装します。
+            Phase 1 の途中です。時間の記録・支出の記録・共通タグ・バックアップまでが動きます。
+            タグ別サマリーと分析グラフはこの次に実装します。
           </p>
         </Card>
       </section>
