@@ -75,7 +75,28 @@ export interface TagSlice {
 }
 
 const OTHER_COLOR = '#78808F'
-const MAX_SLICES = 8
+
+/**
+ * 記録を1時間ごとのバケツに配分する。
+ * 23時に始めて1時に終わった記録は、23時台・0時台・1時台に正しく割り振る。
+ */
+export function hourHistogram(sessions: Session[], from: number, to: number): number[] {
+  const hours = new Array(24).fill(0) as number[]
+  for (const s of sessions) {
+    let cursor = Math.max(s.startedAt, from)
+    const end = Math.min(s.endedAt, to)
+    while (cursor < end) {
+      const d = new Date(cursor)
+      const nextHour = new Date(d)
+      nextHour.setMinutes(0, 0, 0)
+      nextHour.setHours(nextHour.getHours() + 1)
+      const slice = Math.min(nextHour.getTime(), end) - cursor
+      hours[d.getHours()] += slice / 1000
+      cursor += slice
+    }
+  }
+  return hours
+}
 
 /**
  * タグ別の集計。9件目以降は「その他」にまとめる。
@@ -87,6 +108,7 @@ export function aggregateByTag(
   transactions: Transaction[],
   from: number,
   key: 'sec' | 'yen',
+  maxSlices = 6,
 ): TagSlice[] {
   const map = new Map<string, TagSlice>()
   const slot = (id: string | null) => {
@@ -112,10 +134,10 @@ export function aggregateByTag(
   for (const t of transactions) if (t.occurredAt >= from) slot(t.tagId).yen += t.amount
 
   const rows = [...map.values()].filter((r) => r[key] > 0).sort((a, b) => b[key] - a[key])
-  if (rows.length <= MAX_SLICES) return rows
+  if (rows.length <= maxSlices) return rows
 
-  const head = rows.slice(0, MAX_SLICES - 1)
-  const tail = rows.slice(MAX_SLICES - 1)
+  const head = rows.slice(0, maxSlices - 1)
+  const tail = rows.slice(maxSlices - 1)
   head.push({
     id: '__other',
     name: `その他 ${tail.length}件`,
