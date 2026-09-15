@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/db'
 import { alive } from '../db/repo'
@@ -6,12 +6,16 @@ import { useTags } from '../components/TagPicker'
 import { DayBars, DayClock, Donut, StatTile } from '../components/charts'
 import { Card } from '../components/ui'
 import {
-  DOW_LABELS,
+  DEFAULT_GRANULARITY,
+  GRANULARITIES,
+  PERIODS,
   aggregateByTag,
-  buildDays,
-  elapsedDays,
-  fillDays,
+  buildBuckets,
+  elapsedDaysIn,
+  fillBuckets,
   hourHistogram,
+  thinLabels,
+  type Granularity,
   type Period,
 } from '../lib/analytics'
 import { formatYen } from '../lib/money'
@@ -25,101 +29,124 @@ export function AnalyticsView() {
   const transactions = useLiveQuery(() => db.transactions.toArray(), [], undefined)
   const tags = useTags()
 
-  const [period, setPeriod] = useState<Period>('week')
+  const [period, setPeriod] = useState<Period>('month')
+  const [granularity, setGranularity] = useState<Granularity>('day')
   const [selected, setSelected] = useState<number | null>(null)
   const [showTable, setShowTable] = useState(false)
 
-  const { days, totalSec, totalYen, byTime, byMoney, hours } = useMemo(() => {
+  // 期間を変えたら粒度も妥当なものに戻す。1年を日ごとで開いて驚くのを避ける。
+  useEffect(() => {
+    setGranularity(DEFAULT_GRANULARITY[period])
+    setSelected(null)
+  }, [period])
+
+  const { buckets, totalSec, totalYen, byTime, byMoney, hours, from, to } = useMemo(() => {
     const ss = alive(sessions)
     const ts = alive(transactions)
-    const base = fillDays(buildDays(period), ss, ts)
+    const earliest = Math.min(
+      ...ss.map((s) => s.startedAt),
+      ...ts.map((t) => t.occurredAt),
+      Date.now(),
+    )
+    const base = fillBuckets(buildBuckets(period, granularity, earliest), ss, ts)
     const f = base.length ? base[0].ts : Date.now()
-    const to = base.length ? base[base.length - 1].ts + 86400000 : Date.now()
+    const t2 = base.length ? base[base.length - 1].end : Date.now()
     return {
-      days: base,
-      totalSec: base.reduce((a, d) => a + d.sec, 0),
-      totalYen: base.reduce((a, d) => a + d.yen, 0),
-      byTime: aggregateByTag(tags, ss, ts, f, 'sec'),
-      byMoney: aggregateByTag(tags, ss, ts, f, 'yen'),
-      hours: hourHistogram(ss, f, to),
+      buckets: base,
+      from: f,
+      to: t2,
+      totalSec: base.reduce((a, b) => a + b.sec, 0),
+      totalYen: base.reduce((a, b) => a + b.yen, 0),
+      byTime: aggregateByTag(tags, ss, ts, f, t2, 'sec'),
+      byMoney: aggregateByTag(tags, ss, ts, f, t2, 'yen'),
+      hours: hourHistogram(ss, f, t2),
     }
-  }, [sessions, transactions, tags, period])
+  }, [sessions, transactions, tags, period, granularity])
 
-  // 月表示は日数が多いので、ラベルは間引く
-  const dayLabels = days.map((d) =>
-    period === 'week' ? DOW_LABELS[d.dow] : String(new Date(d.ts).getDate()),
-  )
-  const axisLabels = days.map((d, i) => {
-    if (period === 'week') return DOW_LABELS[d.dow]
-    const n = new Date(d.ts).getDate()
-    return n === 1 || n % 5 === 0 || i === days.length - 1 ? String(n) : ''
-  })
+  const axisLabels = thinLabels(buckets, buckets.length > 40 ? 6 : 8)
+  const sel = selected !== null ? buckets[selected] : null
+  const days = elapsedDaysIn(buckets)
+  const activeBuckets = buckets.filter((b) => b.sec > 0).length
 
-  const pick = (i: number | null) => setSelected(i)
-  const sel = selected !== null ? days[selected] : null
-  const activeDays = days.filter((d) => d.sec > 0).length
+  const unit = granularity === 'day' ? '日' : granularity === 'week' ? '週' : 'か月'
 
   return (
     <div className="flex flex-col gap-5">
-      {/* 期間の切り替え。すべてのグラフがこの1箇所に従う */}
-      <div className="flex rounded-xl border border-rule bg-surface p-1">
-        {(['week', 'month'] as const).map((p) => (
-          <button
-            key={p}
-            onClick={() => {
-              setPeriod(p)
-              setSelected(null)
-            }}
-            aria-pressed={period === p}
-            className={`flex-1 rounded-lg py-2 text-[13.5px] font-semibold ${
-              period === p ? 'bg-ink text-paper' : 'text-muted'
-            }`}
-          >
-            {p === 'week' ? '今週' : '今月'}
-          </button>
-        ))}
+      {/* 期間と粒度。すべてのグラフがこの2つに従う */}
+      <div className="flex flex-col gap-2">
+        <div className="-mx-4 overflow-x-auto px-4">
+          <div className="flex w-max gap-1.5">
+            {PERIODS.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setPeriod(p.id)}
+                aria-pressed={period === p.id}
+                className={`shrink-0 rounded-full border px-3.5 py-1.5 text-[13px] font-semibold ${
+                  period === p.id
+                    ? 'border-ink bg-ink text-paper'
+                    : 'border-rule bg-surface text-muted'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex rounded-xl border border-rule bg-surface p-1">
+          {GRANULARITIES.map((g) => (
+            <button
+              key={g.id}
+              onClick={() => {
+                setGranularity(g.id)
+                setSelected(null)
+              }}
+              aria-pressed={granularity === g.id}
+              className={`flex-1 rounded-lg py-1.5 text-[12.5px] font-semibold ${
+                granularity === g.id ? 'bg-surface2 text-ink' : 'text-muted'
+              }`}
+            >
+              {g.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2.5">
         <StatTile
           label="合計時間"
           value={totalSec > 0 ? formatDuration(totalSec) : '—'}
-          sub={activeDays > 0 ? `${activeDays}日 記録あり` : undefined}
+          sub={activeBuckets > 0 ? `${activeBuckets}${unit} 記録あり` : undefined}
           color={TIME_COLOR}
         />
         <StatTile
           label="合計支出"
           value={totalYen > 0 ? formatYen(totalYen) : '—'}
-          sub={
-            totalYen > 0 ? `1日あたり ${formatYen(Math.round(totalYen / elapsedDays(days)))}` : undefined
-          }
+          sub={totalYen > 0 ? `1日あたり ${formatYen(Math.round(totalYen / days))}` : undefined}
           color={MONEY_COLOR}
         />
       </div>
 
-      {/* 日別の推移 */}
+      {/* 推移 */}
       <Card className="px-4 py-4">
         <div className="flex items-baseline justify-between">
-          <h3 className="text-[13px] font-bold">日別の推移</h3>
+          <h3 className="text-[13px] font-bold">推移</h3>
           <span className="text-[11.5px] text-muted">
-            {sel ? '棒をもう一度押すと解除' : '棒を押すと内訳'}
+            {sel ? '押すと解除' : '棒を押すと内訳'}
           </span>
         </div>
 
-        {/* 選んだ日の読み取り。数値はグラフの外にも出す */}
         <div className="tnum mt-2 flex h-[22px] items-center gap-3 text-[13px]">
           {sel ? (
             <>
-              <span className="font-semibold">
-                {new Date(sel.ts).getMonth() + 1}/{new Date(sel.ts).getDate()}（
-                {DOW_LABELS[sel.dow]}）
-              </span>
+              <span className="font-semibold">{sel.fullLabel}</span>
               <span className="text-time">{sel.sec > 0 ? formatDuration(sel.sec) : '—'}</span>
               <span className="text-money">{sel.yen > 0 ? formatYen(sel.yen) : '—'}</span>
             </>
           ) : (
             <span className="text-muted">
-              {period === 'week' ? '月曜からの7日間' : '今月1日から今日まで'}
+              {buckets.length}
+              {unit}分
             </span>
           )}
         </div>
@@ -127,37 +154,52 @@ export function AnalyticsView() {
         <div className="mt-3 flex flex-col gap-4">
           <DayBars
             label="時間"
-            values={days.map((d) => d.sec)}
+            values={buckets.map((b) => b.sec)}
             color={TIME_COLOR}
             format={(v) => formatDuration(v)}
-            dayLabels={dayLabels}
+            dayLabels={buckets.map((b) => b.fullLabel)}
             selected={selected}
-            onSelect={pick}
+            onSelect={setSelected}
           />
           <DayBars
             label="支出"
-            values={days.map((d) => d.yen)}
+            values={buckets.map((b) => b.yen)}
             color={MONEY_COLOR}
             format={(v) => formatYen(v)}
-            dayLabels={dayLabels}
+            dayLabels={buckets.map((b) => b.fullLabel)}
             selected={selected}
-            onSelect={pick}
+            onSelect={setSelected}
           />
         </div>
 
-        {/* 日付の軸は2つのグラフで共通。単位が違うので縦軸は重ねない */}
-        <div className="mt-1.5 flex gap-[2px]">
-          {axisLabels.map((l, i) => (
-            <span
-              key={i}
-              className={`tnum flex-1 text-center text-[10px] ${
-                selected === i ? 'font-bold text-ink' : 'text-muted'
-              }`}
-              style={{ minWidth: 4 }}
-            >
-              {l}
-            </span>
-          ))}
+        {/*
+          軸は2つのグラフで共通。単位が違うので縦軸は重ねない。
+          棒が50本を超えると1本あたりの幅が数pxしかなく、ラベルを棒の枠に
+          押し込むと文字が切れる。棒の位置に対して絶対配置し、枠をはみ出して
+          描けるようにしてある。
+        */}
+        <div className="relative mt-1.5 h-4">
+          {axisLabels.map((l, i) =>
+            l ? (
+              <span
+                key={i}
+                className={`tnum absolute top-0 text-[10px] whitespace-nowrap ${
+                  selected === i ? 'font-bold text-ink' : 'text-muted'
+                }`}
+                style={{
+                  left: `${((i + 0.5) / axisLabels.length) * 100}%`,
+                  transform:
+                    i === 0
+                      ? 'translateX(0)'
+                      : i === axisLabels.length - 1
+                        ? 'translateX(-100%)'
+                        : 'translateX(-50%)',
+                }}
+              >
+                {l}
+              </span>
+            ) : null,
+          )}
         </div>
 
         <button
@@ -168,25 +210,23 @@ export function AnalyticsView() {
         </button>
 
         {showTable && (
-          <div className="mt-2 overflow-x-auto">
+          <div className="mt-2 max-h-[320px] overflow-auto">
             <table className="tnum w-full text-[12.5px]">
-              <thead>
+              <thead className="sticky top-0 bg-surface">
                 <tr className="text-[10.5px] tracking-wider text-muted">
-                  <th className="py-1.5 text-left font-medium">日</th>
+                  <th className="py-1.5 text-left font-medium">期間</th>
                   <th className="py-1.5 text-right font-medium">時間</th>
                   <th className="py-1.5 text-right font-medium">支出</th>
                 </tr>
               </thead>
               <tbody>
-                {days.map((d) => (
-                  <tr key={d.key} className="border-t border-rulesoft">
-                    <td className="py-1.5">
-                      {new Date(d.ts).getDate()}日（{DOW_LABELS[d.dow]}）
-                    </td>
+                {buckets.map((b) => (
+                  <tr key={b.key} className="border-t border-rulesoft">
+                    <td className="py-1.5">{b.fullLabel}</td>
                     <td className="py-1.5 text-right">
-                      {d.sec > 0 ? formatDuration(d.sec) : '—'}
+                      {b.sec > 0 ? formatDuration(b.sec) : '—'}
                     </td>
-                    <td className="py-1.5 text-right">{d.yen > 0 ? formatYen(d.yen) : '—'}</td>
+                    <td className="py-1.5 text-right">{b.yen > 0 ? formatYen(b.yen) : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -234,6 +274,12 @@ export function AnalyticsView() {
           />
         </div>
       </Card>
+
+      {/* 集計範囲を明示しておく */}
+      <p className="px-1 text-[11.5px] text-muted">
+        {new Date(from).toLocaleDateString('ja-JP')} 〜{' '}
+        {new Date(Math.min(to - 1, Date.now())).toLocaleDateString('ja-JP')} の記録
+      </p>
     </div>
   )
 }

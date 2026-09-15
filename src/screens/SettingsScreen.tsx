@@ -86,15 +86,32 @@ export function SettingsScreen() {
           <p className="mt-3 text-[12px] leading-relaxed text-muted">
             この時間を超えて計測が続いていると、終了時刻を手で直せる案内を出します。
           </p>
+
+          <label className="mt-4 flex items-start gap-2.5 border-t border-rulesoft pt-4 text-[13.5px]">
+            <input
+              id="show-seconds"
+              type="checkbox"
+              checked={settings?.showSeconds ?? true}
+              onChange={(e) => saveSettings({ showSeconds: e.target.checked })}
+              className="mt-0.5 size-4 shrink-0 accent-[var(--c-time)]"
+            />
+            <span>
+              記録を秒まで表示する
+              <span className="mt-1 block text-[12px] leading-relaxed text-muted">
+                計測は常に秒単位で行われています。これを外すと「1分30秒」が「1分」と表示されます。
+                長い期間の合計とグラフは、桁が増えすぎるため常に時間と分で表示します。
+              </span>
+            </span>
+          </label>
         </Card>
       </section>
 
       <section className="mt-6">
-        <h2 className="mb-2 px-1 text-[13px] font-bold">このバージョンについて</h2>
+        <h2 className="mb-2 px-1 text-[13px] font-bold">Kirimori について</h2>
         <Card className="px-4 py-4">
           <p className="text-[13px] leading-relaxed text-ink2">
-            Phase 1 の途中です。時間の記録・支出の記録・共通タグ・バックアップまでが動きます。
-            タグ別サマリーと分析グラフはこの次に実装します。
+            Kirimori（切り盛り）— 時間もお金も、ひとつのタグでまとめて記録するアプリです。
+            Phase 1 の途中で、時間の記録・支出・固定費・共通タグ・グラフ・バックアップまでが動きます。
           </p>
         </Card>
       </section>

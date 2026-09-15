@@ -97,7 +97,23 @@ export function ExpenseScreen() {
             </div>
           </div>
 
-          {/* ---- 名称 ---- */}
+          {/* ---- テンキー。金額のすぐ下に置く ---- */}
+          <div className="border-t border-rulesoft bg-surface2 px-3 py-3">
+            <div className="grid grid-cols-3 gap-2">
+              {KEYS.map((k) => (
+                <button
+                  key={k}
+                  onClick={() => press(k)}
+                  aria-label={k === 'del' ? '1文字消す' : k}
+                  className="tnum rounded-xl border border-rule bg-surface py-3.5 text-[19px] font-semibold active:opacity-60"
+                >
+                  {k === 'del' ? '⌫' : k}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ---- 名称。任意なので下に置く ---- */}
           <div className="border-t border-rulesoft px-5 py-3">
             <input
               id="new-expense-name"
@@ -113,28 +129,15 @@ export function ExpenseScreen() {
           {/* ---- タグ ---- */}
           {tags.length > 0 && (
             <div className="border-t border-rulesoft px-5 py-3">
-              <TagPicker value={tagId} onChange={setTagId} />
+              <TagPicker value={tagId} onChange={setTagId} scope="money" />
             </div>
           )}
 
-          {/* ---- テンキー ---- */}
-          <div className="border-t border-rulesoft bg-surface2 px-3 pt-3 pb-3">
-            <div className="grid grid-cols-3 gap-2">
-              {KEYS.map((k) => (
-                <button
-                  key={k}
-                  onClick={() => press(k)}
-                  aria-label={k === 'del' ? '1文字消す' : k}
-                  className="tnum rounded-xl border border-rule bg-surface py-3.5 text-[19px] font-semibold active:opacity-60"
-                >
-                  {k === 'del' ? '⌫' : k}
-                </button>
-              ))}
-            </div>
+          <div className="border-t border-rulesoft px-5 py-3">
             <button
               onClick={save}
               disabled={!canSave}
-              className="mt-2 w-full rounded-xl bg-money py-3.5 text-[16px] font-bold text-paper disabled:opacity-35"
+              className="w-full rounded-xl bg-money py-3.5 text-[16px] font-bold text-paper disabled:opacity-35"
             >
               記録する
             </button>

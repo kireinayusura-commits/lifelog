@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '../db/db'
+import { db, useShowSeconds } from '../db/db'
 import { alive } from '../db/repo'
 import { useTimer } from '../timer/useTimer'
 import { TagPicker, useTags } from '../components/TagPicker'
 import { Button, Card, Dot, Field, Modal, inputClass } from '../components/ui'
+import { SessionEditModal, type SessionTarget } from '../components/SessionEditModal'
 import {
   formatClock,
   formatDuration,
@@ -22,6 +23,8 @@ export function TimerScreen() {
   const [adjustOpen, setAdjustOpen] = useState(false)
   const [adjustValue, setAdjustValue] = useState('')
   const [toast, setToast] = useState<string | null>(null)
+  const [editing, setEditing] = useState<SessionTarget>(null)
+  const showSeconds = useShowSeconds()
 
   const settings = useLiveQuery(() => db.settings.get('settings'), [], undefined)
   const warnHours = settings?.longRunWarnHours ?? 8
@@ -49,7 +52,9 @@ export function TimerScreen() {
   const handleStop = async (endedAt?: number) => {
     const saved = await stop(endedAt)
     setAdjustOpen(false)
-    showToast(saved ? `${formatDuration(saved.durationSec)}を記録しました` : '短すぎたため記録しませんでした')
+    showToast(
+      saved ? `${formatDuration(saved.durationSec, true)}を記録しました` : '短すぎたため記録しませんでした',
+    )
   }
 
   const openAdjust = () => {
@@ -99,7 +104,7 @@ export function TimerScreen() {
               <>
                 {tags.length > 0 && (
                   <div className="mb-4">
-                    <TagPicker value={pendingTag} onChange={setPendingTag} allowNone={false} />
+                    <TagPicker value={pendingTag} onChange={setPendingTag} allowNone={false} scope="time" />
                   </div>
                 )}
                 <Button
@@ -133,7 +138,7 @@ export function TimerScreen() {
           {active && (
             <div className="border-t border-rulesoft px-5 py-3">
               <div className="mb-2 text-[11px] font-semibold tracking-wider text-muted">タグ</div>
-              <TagPicker value={active.tagId} onChange={(id) => setTag(id)} />
+              <TagPicker value={active.tagId} onChange={(id) => setTag(id)} scope="time" />
             </div>
           )}
         </Card>
@@ -161,9 +166,14 @@ export function TimerScreen() {
 
         {/* ---- 今日 ---- */}
         <div className="mt-6 flex items-baseline justify-between">
-          <h2 className="text-[13px] font-bold tracking-wide text-muted">今日</h2>
+          <h2 className="text-[13px] font-bold tracking-wide text-muted">
+            今日
+            {today.rows.length > 0 && (
+              <span className="ml-2 font-normal text-[11.5px]">押すと直せます</span>
+            )}
+          </h2>
           <span className="tnum text-[15px] font-bold">
-            {today.total > 0 ? formatDuration(today.total) : '—'}
+            {today.total > 0 ? formatDuration(today.total, showSeconds) : '—'}
           </span>
         </div>
 
@@ -177,7 +187,12 @@ export function TimerScreen() {
               {today.rows.map((s) => {
                 const t = tagOf(s.tagId)
                 return (
-                  <div key={s.id} className="flex items-center gap-3 px-4 py-3">
+                  // タグを付け間違えたことに気づくのはここなので、その場で直せるようにする
+                  <button
+                    key={s.id}
+                    onClick={() => setEditing(s)}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left"
+                  >
                     <Dot color={t?.color ?? 'var(--c-muted)'} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[14.5px] font-medium">
@@ -189,15 +204,17 @@ export function TimerScreen() {
                       </div>
                     </div>
                     <div className="tnum text-[14px] font-semibold">
-                      {formatDuration(s.durationSec)}
+                      {formatDuration(s.durationSec, showSeconds)}
                     </div>
-                  </div>
+                  </button>
                 )
               })}
             </Card>
           )}
         </div>
       </div>
+
+      <SessionEditModal target={editing} onClose={() => setEditing(null)} />
 
       {/* ---- 終了時刻の調整 ---- */}
       <Modal open={adjustOpen} onClose={() => setAdjustOpen(false)} title="終了時刻を指定して記録">
