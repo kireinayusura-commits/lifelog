@@ -123,6 +123,224 @@ export function TagBars({
   )
 }
 
+/**
+ * 円グラフ（ドーナツ）。全体に対する割合を一目で掴むためのもので、
+ * 近い値どうしの比較には向かないので、凡例に実数を必ず併記する。
+ * 区分は6つまでで、それ以降は「その他」にまとめる。
+ */
+export function Donut({
+  rows,
+  total,
+  format,
+  centerLabel,
+}: {
+  rows: { id: string; name: string; color: string; value: number }[]
+  total: number
+  format: (v: number) => string
+  centerLabel: string
+}) {
+  if (rows.length === 0 || total <= 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-rule px-4 py-6 text-center text-[12.5px] text-muted">
+        この期間の記録はありません
+      </div>
+    )
+  }
+
+  const R = 46
+  const W = 17
+  const C = 2 * Math.PI * R
+  const GAP = rows.length > 1 ? 3 : 0 // 区分どうしの隙間。境界を線で囲まない
+
+  let offset = 0
+  const arcs = rows.map((r) => {
+    const len = Math.max((r.value / total) * C - GAP, 0.5)
+    const a = { ...r, len, offset }
+    offset += (r.value / total) * C
+    return a
+  })
+
+  return (
+    <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:gap-5">
+      <svg viewBox="0 0 120 120" className="h-[136px] w-[136px] shrink-0" role="img"
+        aria-label={`${centerLabel}のタグ別割合`}>
+        <circle cx="60" cy="60" r={R} fill="none" stroke="var(--c-rule-soft)" strokeWidth={W} />
+        {arcs.map((a) => (
+          <circle
+            key={a.id}
+            cx="60"
+            cy="60"
+            r={R}
+            fill="none"
+            stroke={a.color}
+            strokeWidth={W}
+            strokeDasharray={`${a.len} ${C - a.len}`}
+            strokeDashoffset={-a.offset}
+            transform="rotate(-90 60 60)"
+          />
+        ))}
+        <text
+          x="60"
+          y="57"
+          textAnchor="middle"
+          className="fill-[var(--c-muted)]"
+          style={{ fontSize: 9, fontWeight: 600 }}
+        >
+          {centerLabel}
+        </text>
+        <text
+          x="60"
+          y="72"
+          textAnchor="middle"
+          className="fill-[var(--c-ink)]"
+          style={{ fontSize: 13, fontWeight: 700 }}
+        >
+          {format(total)}
+        </text>
+      </svg>
+
+      <ul className="w-full min-w-0 flex-1 flex-col gap-1.5">
+        {rows.map((r) => (
+          <li key={r.id} className="flex items-baseline gap-2 py-[3px]">
+            <span
+              aria-hidden
+              className="size-2.5 shrink-0 translate-y-[1px] rounded-full"
+              style={{ background: r.color }}
+            />
+            <span className="min-w-0 flex-1 truncate text-[13px]">{r.name}</span>
+            <span className="tnum shrink-0 text-[13px] font-semibold">{format(r.value)}</span>
+            <span className="tnum w-9 shrink-0 text-right text-[11.5px] text-muted">
+              {Math.round((r.value / total) * 100)}%
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/** 24時間の活動分布。1日の輪の上に、その時間帯の活動量を外向きの棒で出す。 */
+export function DayClock({
+  hours,
+  color,
+  format,
+}: {
+  hours: number[]
+  color: string
+  format: (v: number) => string
+}) {
+  const max = Math.max(...hours)
+  const empty = max <= 0
+
+  // 時刻ラベルは輪の外側に出るので、viewBox には輪の直径ではなく
+  // ラベルまで収まる大きさを取る。ここを詰めると 0 / 6 / 12 / 18 が切れる。
+  const SIZE = 192
+  const CX = SIZE / 2
+  const CY = SIZE / 2
+  const R0 = 34
+  const R1 = 74
+  const R_LABEL = R1 + 14
+
+  const peak = hours.indexOf(max)
+  const top = hours
+    .map((v, h) => ({ v, h }))
+    .filter((x) => x.v > 0)
+    .sort((a, b) => b.v - a.v)
+    .slice(0, 3)
+
+  const point = (h: number, r: number) => {
+    const a = ((h * 15 - 90) * Math.PI) / 180
+    return [CX + r * Math.cos(a), CY + r * Math.sin(a)]
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <svg
+        viewBox={`0 0 ${SIZE} ${SIZE}`}
+        className="h-[196px] w-[196px] max-w-full"
+        role="img"
+        aria-label="24時間の活動分布"
+      >
+        {/* 目盛りの輪 */}
+        <circle cx={CX} cy={CY} r={R0 - 4} fill="none" stroke="var(--c-rule-soft)" strokeWidth="1" />
+        <circle cx={CX} cy={CY} r={R1 + 3} fill="none" stroke="var(--c-rule-soft)" strokeWidth="1" />
+
+        {hours.map((v, h) => {
+          const [x0, y0] = point(h, R0)
+          const len = empty ? 0 : (v / max) * (R1 - R0)
+          const [x1, y1] = point(h, R0 + Math.max(len, v > 0 ? 3 : 0))
+          return v > 0 ? (
+            <line
+              key={h}
+              x1={x0}
+              y1={y0}
+              x2={x1}
+              y2={y1}
+              stroke={color}
+              strokeWidth="8"
+              strokeLinecap="round"
+            />
+          ) : (
+            <circle key={h} cx={x0} cy={y0} r="1.5" fill="var(--c-rule)" />
+          )
+        })}
+
+        {/* 0 / 6 / 12 / 18 だけ数字を出す */}
+        {[0, 6, 12, 18].map((h) => {
+          const [x, y] = point(h, R_LABEL)
+          return (
+            <text
+              key={h}
+              x={x}
+              y={y + 3.5}
+              textAnchor="middle"
+              className="fill-[var(--c-muted)]"
+              style={{ fontSize: 10, fontWeight: 600 }}
+            >
+              {h}
+            </text>
+          )
+        })}
+
+        {!empty && (
+          <>
+            <text
+              x={CX}
+              y={CY - 3}
+              textAnchor="middle"
+              className="fill-[var(--c-muted)]"
+              style={{ fontSize: 9, fontWeight: 600 }}
+            >
+              最も多い
+            </text>
+            <text
+              x={CX}
+              y={CY + 12}
+              textAnchor="middle"
+              className="fill-[var(--c-ink)]"
+              style={{ fontSize: 14, fontWeight: 700 }}
+            >
+              {peak}時台
+            </text>
+          </>
+        )}
+      </svg>
+
+      {empty ? (
+        <p className="text-[12.5px] text-muted">この期間の記録はありません</p>
+      ) : (
+        <ul className="tnum flex flex-wrap justify-center gap-x-4 gap-y-1 text-[12px] text-muted">
+          {top.map((x) => (
+            <li key={x.h}>
+              <span className="font-semibold text-ink">{x.h}時台</span> {format(x.v)}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 /** 数字そのものが答えになる場面では、棒1本のグラフより数字を大きく出す。 */
 export function StatTile({
   label,

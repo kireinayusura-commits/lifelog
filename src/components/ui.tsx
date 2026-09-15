@@ -18,7 +18,7 @@ export function Screen({
           {action}
         </div>
       </header>
-      <div className="px-4 pt-4 pb-28">{children}</div>
+      <div className="px-4 pt-4 pb-6">{children}</div>
     </div>
   )
 }
