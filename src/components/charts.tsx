@@ -14,6 +14,7 @@ export function DayBars({
   label,
   format,
   dayLabels,
+  maxWidth,
 }: {
   values: number[]
   color: string
@@ -23,10 +24,17 @@ export function DayBars({
   label: string
   format: (v: number) => string
   dayLabels: string[]
+  /** 本数が少ないときに帯のように太くならないよう、行全体の幅を絞る */
+  maxWidth?: number
 }) {
   const max = Math.max(...values, 1)
   const empty = values.every((v) => v === 0)
   const maxLabel = format(max)
+
+  // 本数に応じて隙間と太さを変える。本数が多いときに固定の隙間のままだと、
+  // 隙間の合計だけで画面幅を超えてしまう。
+  // 逆に本数が少ないときは、太さに上限を置かないとただの帯になる。
+  const gap = values.length > 60 ? 1 : 2
 
   return (
     <div>
@@ -38,8 +46,8 @@ export function DayBars({
       </div>
 
       <div
-        className="relative flex items-end gap-[2px] border-b border-rule"
-        style={{ height }}
+        className="relative flex items-end border-b border-rule"
+        style={{ height, gap, maxWidth }}
         role="img"
         aria-label={`${label}の日別グラフ`}
       >
@@ -55,7 +63,7 @@ export function DayBars({
               onClick={() => onSelect(on ? null : i)}
               aria-label={`${dayLabels[i] ?? i + 1}: ${v === 0 ? 'なし' : format(v)}`}
               className="group relative flex h-full flex-1 items-end"
-              style={{ minWidth: 4 }}
+              style={{ minWidth: 0 }}
             >
               {/* 当たり判定を棒より広く取る */}
               <span className="absolute inset-x-[-2px] inset-y-0" />

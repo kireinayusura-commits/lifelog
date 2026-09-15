@@ -21,7 +21,7 @@ export const GRANULARITIES: { id: Granularity; label: string }[] = [
 /**
  * 期間ごとの既定の粒度。
  * 1年を日ごとで出すと棒が365本になって読めないので、
- * 長い期間は粗い粒度から始める。切り替えは自由。
+ * 長い期間は粗い粒度から始める。
  */
 export const DEFAULT_GRANULARITY: Record<Period, Granularity> = {
   month: 'day',
@@ -29,6 +29,55 @@ export const DEFAULT_GRANULARITY: Record<Period, Granularity> = {
   '6m': 'week',
   '1y': 'month',
   all: 'month',
+}
+
+/**
+ * 画面幅に収まる棒の本数の上限と下限。
+ *
+ * 上限：スマホの横幅では棒と隙間を合わせて1本 3px 程度が限界で、
+ * これを超えると棒が画面からはみ出す。
+ * 下限：棒が1〜2本しかないグラフは、ただの太い帯にしかならない。
+ *
+ * この範囲に入らない組み合わせは選べないようにしている。
+ */
+export const MAX_BUCKETS = 100
+export const MIN_BUCKETS = 3
+
+export interface GranularityOption {
+  id: Granularity
+  label: string
+  count: number
+  /** 選べるかどうか。選べない場合は reason に理由が入る。 */
+  ok: boolean
+  reason?: string
+}
+
+export function granularityOptions(
+  period: Period,
+  earliest: number,
+  now: number = Date.now(),
+): GranularityOption[] {
+  return GRANULARITIES.map((g) => {
+    const count = buildBuckets(period, g.id, earliest, now).length
+    if (count > MAX_BUCKETS)
+      return { ...g, count, ok: false, reason: `${count}本になり画面に収まりません` }
+    if (count < MIN_BUCKETS) return { ...g, count, ok: false, reason: `${count}本では形になりません` }
+    return { ...g, count, ok: true }
+  })
+}
+
+/** 既定の粒度が選べない場合に備えて、選べるものへ寄せる。 */
+export function resolveGranularity(
+  period: Period,
+  wanted: Granularity,
+  earliest: number,
+  now: number = Date.now(),
+): Granularity {
+  const opts = granularityOptions(period, earliest, now)
+  if (opts.find((o) => o.id === wanted)?.ok) return wanted
+  const def = opts.find((o) => o.id === DEFAULT_GRANULARITY[period])
+  if (def?.ok) return def.id
+  return opts.find((o) => o.ok)?.id ?? 'month'
 }
 
 export interface Bucket {

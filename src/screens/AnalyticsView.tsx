@@ -6,14 +6,14 @@ import { useTags } from '../components/TagPicker'
 import { DayBars, DayClock, Donut, StatTile } from '../components/charts'
 import { Card } from '../components/ui'
 import {
-  DEFAULT_GRANULARITY,
-  GRANULARITIES,
   PERIODS,
   aggregateByTag,
   buildBuckets,
   elapsedDaysIn,
   fillBuckets,
+  granularityOptions,
   hourHistogram,
+  resolveGranularity,
   thinLabels,
   type Granularity,
   type Period,
@@ -34,20 +34,25 @@ export function AnalyticsView() {
   const [selected, setSelected] = useState<number | null>(null)
   const [showTable, setShowTable] = useState(false)
 
-  // 期間を変えたら粒度も妥当なものに戻す。1年を日ごとで開いて驚くのを避ける。
+  /** 全期間の起点。記録が1件も無ければ今日。 */
+  const earliest = useMemo(() => {
+    const ss = alive(sessions)
+    const ts = alive(transactions)
+    return Math.min(...ss.map((s) => s.startedAt), ...ts.map((t) => t.occurredAt), Date.now())
+  }, [sessions, transactions])
+
+  // 画面に収まらない粒度は選べないようにする
+  const granOptions = useMemo(() => granularityOptions(period, earliest), [period, earliest])
+
+  // 期間を変えたら粒度も選べるものに寄せる。1年を日ごとで開いて棒が365本、を避ける。
   useEffect(() => {
-    setGranularity(DEFAULT_GRANULARITY[period])
+    setGranularity((g) => resolveGranularity(period, g, earliest))
     setSelected(null)
-  }, [period])
+  }, [period, earliest])
 
   const { buckets, totalSec, totalYen, byTime, byMoney, hours, from, to } = useMemo(() => {
     const ss = alive(sessions)
     const ts = alive(transactions)
-    const earliest = Math.min(
-      ...ss.map((s) => s.startedAt),
-      ...ts.map((t) => t.occurredAt),
-      Date.now(),
-    )
     const base = fillBuckets(buildBuckets(period, granularity, earliest), ss, ts)
     const f = base.length ? base[0].ts : Date.now()
     const t2 = base.length ? base[base.length - 1].end : Date.now()
@@ -61,7 +66,10 @@ export function AnalyticsView() {
       byMoney: aggregateByTag(tags, ss, ts, f, t2, 'yen'),
       hours: hourHistogram(ss, f, t2),
     }
-  }, [sessions, transactions, tags, period, granularity])
+  }, [sessions, transactions, tags, period, granularity, earliest])
+
+  // 棒が少ないときに1本が帯のように太くならないよう、行の幅を絞る
+  const chartMaxWidth = buckets.length <= 12 ? buckets.length * 40 : undefined
 
   const axisLabels = thinLabels(buckets, buckets.length > 40 ? 6 : 8)
   const sel = selected !== null ? buckets[selected] : null
@@ -94,17 +102,19 @@ export function AnalyticsView() {
         </div>
 
         <div className="flex rounded-xl border border-rule bg-surface p-1">
-          {GRANULARITIES.map((g) => (
+          {granOptions.map((g) => (
             <button
               key={g.id}
               onClick={() => {
                 setGranularity(g.id)
                 setSelected(null)
               }}
+              disabled={!g.ok}
               aria-pressed={granularity === g.id}
+              title={g.ok ? undefined : `この期間では${g.reason}`}
               className={`flex-1 rounded-lg py-1.5 text-[12.5px] font-semibold ${
                 granularity === g.id ? 'bg-surface2 text-ink' : 'text-muted'
-              }`}
+              } disabled:opacity-30`}
             >
               {g.label}
             </button>
@@ -160,6 +170,7 @@ export function AnalyticsView() {
             dayLabels={buckets.map((b) => b.fullLabel)}
             selected={selected}
             onSelect={setSelected}
+            maxWidth={chartMaxWidth}
           />
           <DayBars
             label="支出"
@@ -169,6 +180,7 @@ export function AnalyticsView() {
             dayLabels={buckets.map((b) => b.fullLabel)}
             selected={selected}
             onSelect={setSelected}
+            maxWidth={chartMaxWidth}
           />
         </div>
 
@@ -178,7 +190,7 @@ export function AnalyticsView() {
           押し込むと文字が切れる。棒の位置に対して絶対配置し、枠をはみ出して
           描けるようにしてある。
         */}
-        <div className="relative mt-1.5 h-4">
+        <div className="relative mt-1.5 h-4" style={{ maxWidth: chartMaxWidth }}>
           {axisLabels.map((l, i) =>
             l ? (
               <span

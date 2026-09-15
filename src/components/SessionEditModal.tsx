@@ -56,6 +56,35 @@ function resolve(text: string, original: number | null): number {
   return fromDatetimeLocal(text)
 }
 
+const dayOf = (text: string) => text.slice(0, 10)
+
+function shiftDays(text: string, days: number): string {
+  const d = new Date(fromDatetimeLocal(text))
+  d.setDate(d.getDate() + days)
+  return toDatetimeLocal(d.getTime())
+}
+
+/**
+ * 開始の日付を変えたら、終了の日付も同じだけ動かす。
+ *
+ * ほとんどの記録は同じ日に始まって同じ日に終わるので、
+ * 日付を2回入れ直すのは手間だし、片方だけ直して
+ * 「3日間の記録」になってしまう事故も起きる。
+ * 同じ日にするのではなく同じ日数だけずらすので、
+ * 日をまたぐ記録（23時開始・1時終了）もそのまま保たれる。
+ */
+function syncEndToStart(prevStart: string, nextStart: string, end: string): string {
+  const before = dayOf(prevStart)
+  const after = dayOf(nextStart)
+  if (before === after) return end // 時刻だけの変更なら触らない
+
+  const delta = Math.round(
+    (fromDatetimeLocal(`${after}T00:00`) - fromDatetimeLocal(`${before}T00:00`)) / 86400000,
+  )
+  if (!Number.isFinite(delta) || delta === 0) return end
+  return shiftDays(end, delta)
+}
+
 /**
  * 時間の記録を直す・消す・手で足すためのモーダル。
  * タイマー画面と記録画面の両方から開けるようにしてある。
@@ -98,7 +127,13 @@ export function SessionEditModal({
             id="ses-started-at"
             type="datetime-local"
             value={d.startedAt}
-            onChange={(e) => setD({ ...d, startedAt: e.target.value })}
+            onChange={(e) =>
+              setD({
+                ...d,
+                startedAt: e.target.value,
+                endedAt: syncEndToStart(d.startedAt, e.target.value, d.endedAt),
+              })
+            }
             className={inputClass}
           />
         </Field>
