@@ -183,7 +183,7 @@ function RecurringModal({ draft, onClose }: { draft: Draft | null; onClose: () =
 
         <div>
           <span className="mb-2 block text-[12px] font-semibold text-muted">タグ</span>
-          <TagPicker value={d.tagId} onChange={(id) => setD({ ...d, tagId: id })} />
+          <TagPicker value={d.tagId} onChange={(id) => setD({ ...d, tagId: id })} scope="money" />
         </div>
 
         {d.id && (

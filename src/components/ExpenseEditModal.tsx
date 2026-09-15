@@ -35,7 +35,8 @@ export function ExpenseEditModal({
       amount: parsed,
       name,
       tagId,
-      occurredAt: fromDatetimeLocal(at),
+      // 日時欄を触っていなければ、秒を切り捨てずに元の時刻をそのまま使う
+      occurredAt: at === toDatetimeLocal(target.occurredAt) ? target.occurredAt : fromDatetimeLocal(at),
     })
     onClose()
   }
@@ -66,7 +67,7 @@ export function ExpenseEditModal({
           </Field>
           <div>
             <span className="mb-2 block text-[12px] font-semibold text-muted">タグ</span>
-            <TagPicker value={tagId} onChange={setTagId} />
+            <TagPicker value={tagId} onChange={setTagId} scope="money" />
           </div>
           <Field label="日時">
             <input

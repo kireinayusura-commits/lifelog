@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/db'
 import { alive } from '../db/repo'
-import type { Id } from '../db/types'
+import type { Group, Id, Tag, TagScope } from '../db/types'
 import { Dot } from './ui'
 
 export function useTags() {
@@ -16,27 +16,47 @@ export function useGroups() {
   return alive(groups).sort((a, b) => a.order - b.order)
 }
 
+/**
+ * その場面で使えるタグだけに絞る。
+ * グループに用途が設定されていれば従い、グループに属さないタグは常に使える。
+ */
+export function filterByScope(tags: Tag[], groups: Group[], scope: TagScope | undefined): Tag[] {
+  if (!scope || scope === 'both') return tags
+  return tags.filter((t) => {
+    if (!t.groupId) return true
+    const g = groups.find((x) => x.id === t.groupId)
+    if (!g) return true
+    return g.scope === 'both' || g.scope === scope
+  })
+}
+
 export function TagPicker({
   value,
   onChange,
   allowNone = true,
+  scope,
 }: {
   value: Id | null
   onChange: (id: Id | null) => void
   allowNone?: boolean
+  /** 'time' なら時間用のタグだけ、'money' ならお金用のタグだけを出す */
+  scope?: TagScope
 }) {
-  const tags = useTags()
+  const allTags = useTags()
   const groups = useGroups()
+  const tags = filterByScope(allTags, groups, scope)
 
   if (tags.length === 0) {
     return (
       <p className="text-[13px] text-muted">
-        タグがまだありません。「タグ」画面で作成してください。
+        {allTags.length === 0
+          ? 'タグがまだありません。「タグ」画面で作成してください。'
+          : 'この用途で使えるタグがありません。「タグ」画面でグループの用途を確認してください。'}
       </p>
     )
   }
 
-  const grouped: { key: string; name: string | null; items: typeof tags }[] = []
+  const grouped: { key: string; name: string | null; items: Tag[] }[] = []
   for (const g of groups) {
     const items = tags.filter((t) => t.groupId === g.id)
     if (items.length) grouped.push({ key: g.id, name: g.name, items })
