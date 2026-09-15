@@ -33,8 +33,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'ログ — 時間とお金の記録',
-        short_name: 'ログ',
+        name: 'Kirimori — 時間とお金の記録',
+        short_name: 'Kirimori',
         description: '勉強も趣味も支出も、ひとつのタグでまとめて記録する',
         lang: 'ja',
         start_url: base,
