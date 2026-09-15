@@ -9,14 +9,30 @@ export function formatClock(ms: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`
 }
 
-/** 2時間15分 / 45分 のような表示。一覧や集計用。 */
-export function formatDuration(sec: number): string {
+/**
+ * 2時間15分 / 45分 のような表示。
+ *
+ * withSeconds を立てると 2時間15分37秒 のように秒まで出す。
+ * 計測自体は常に秒（内部はミリ秒）で記録しているので、
+ * ここは丸めるかどうかを決めているだけ。
+ */
+export function formatDuration(sec: number, withSeconds = false): string {
   const total = Math.max(0, Math.floor(sec))
   const h = Math.floor(total / 3600)
   const m = Math.floor((total % 3600) / 60)
-  if (h > 0) return m > 0 ? `${h}時間${m}分` : `${h}時間`
-  if (m > 0) return `${m}分`
-  return `${total}秒`
+  const s = total % 60
+
+  if (!withSeconds) {
+    if (h > 0) return m > 0 ? `${h}時間${m}分` : `${h}時間`
+    if (m > 0) return `${m}分`
+    return `${total}秒`
+  }
+
+  const parts: string[] = []
+  if (h > 0) parts.push(`${h}時間`)
+  if (m > 0) parts.push(`${m}分`)
+  if (s > 0 || parts.length === 0) parts.push(`${s}秒`)
+  return parts.join('')
 }
 
 export function formatHours(sec: number): string {

@@ -1,77 +1,198 @@
 import type { Session, Tag, Transaction } from '../db/types'
-import { dateKey, startOfDay } from './time'
+import { startOfDay } from './time'
 
-export type Period = 'week' | 'month'
+export type Period = 'month' | '3m' | '6m' | '1y' | 'all'
+export type Granularity = 'day' | 'week' | 'month'
 
-export interface DayBucket {
+export const PERIODS: { id: Period; label: string }[] = [
+  { id: 'month', label: '今月' },
+  { id: '3m', label: '3か月' },
+  { id: '6m', label: '6か月' },
+  { id: '1y', label: '1年' },
+  { id: 'all', label: '全期間' },
+]
+
+export const GRANULARITIES: { id: Granularity; label: string }[] = [
+  { id: 'day', label: '日ごと' },
+  { id: 'week', label: '週ごと' },
+  { id: 'month', label: '月ごと' },
+]
+
+/**
+ * 期間ごとの既定の粒度。
+ * 1年を日ごとで出すと棒が365本になって読めないので、
+ * 長い期間は粗い粒度から始める。切り替えは自由。
+ */
+export const DEFAULT_GRANULARITY: Record<Period, Granularity> = {
+  month: 'day',
+  '3m': 'week',
+  '6m': 'week',
+  '1y': 'month',
+  all: 'month',
+}
+
+export interface Bucket {
   key: string
+  /** この区間の始まり */
   ts: number
-  /** 月曜=0 の曜日インデックス */
-  dow: number
+  /** この区間の終わり（この時刻は含まない） */
+  end: number
+  /** 軸に出す短いラベル */
+  label: string
+  /** 選択したときに出す長いラベル */
+  fullLabel: string
   sec: number
   yen: number
 }
 
-/**
- * 今週は月曜から日曜までの7日間を常に出す。
- * 月曜に開いたときに棒が1本しか無い、という見え方を避けるため、
- * これから来る日も枠として残す。
- * 今月は1日から今日まで。月初に空の棒を20本並べても意味がない。
- */
-export function buildDays(period: Period, now: number = Date.now()): DayBucket[] {
+function startOfWeek(ts: number): number {
+  const d = new Date(startOfDay(ts))
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7)) // 月曜始まり
+  return d.getTime()
+}
+
+function startOfMonth(ts: number): number {
+  const d = new Date(ts)
+  d.setDate(1)
+  d.setHours(0, 0, 0, 0)
+  return d.getTime()
+}
+
+function addMonths(ts: number, n: number): number {
+  const d = new Date(ts)
+  d.setMonth(d.getMonth() + n)
+  return d.getTime()
+}
+
+/** 期間の開始時刻。月単位で区切るので、月ごとの粒度ときれいに揃う。 */
+export function periodStart(period: Period, earliest: number, now: number = Date.now()): number {
+  const thisMonth = startOfMonth(now)
+  switch (period) {
+    case 'month':
+      return thisMonth
+    case '3m':
+      return addMonths(thisMonth, -2)
+    case '6m':
+      return addMonths(thisMonth, -5)
+    case '1y':
+      return addMonths(thisMonth, -11)
+    case 'all':
+      return startOfDay(Math.min(earliest, now))
+  }
+}
+
+const WD = ['日', '月', '火', '水', '木', '金', '土']
+
+export function buildBuckets(
+  period: Period,
+  granularity: Granularity,
+  earliest: number,
+  now: number = Date.now(),
+): Bucket[] {
+  const from = periodStart(period, earliest, now)
   const today = startOfDay(now)
-  const start = new Date(today)
-  let end: number
+  const out: Bucket[] = []
 
-  if (period === 'week') {
-    start.setDate(start.getDate() - ((start.getDay() + 6) % 7)) // 月曜まで戻す
-    const last = new Date(start)
-    last.setDate(last.getDate() + 6)
-    end = last.getTime()
+  if (granularity === 'day') {
+    const cur = new Date(from)
+    while (cur.getTime() <= today) {
+      const ts = cur.getTime()
+      const d = new Date(ts)
+      const next = new Date(ts)
+      next.setDate(next.getDate() + 1)
+      out.push({
+        key: `d${ts}`,
+        ts,
+        end: next.getTime(),
+        label: String(d.getDate()),
+        fullLabel: `${d.getMonth() + 1}/${d.getDate()}（${WD[d.getDay()]}）`,
+        sec: 0,
+        yen: 0,
+      })
+      cur.setDate(cur.getDate() + 1)
+    }
+  } else if (granularity === 'week') {
+    let ts = startOfWeek(from)
+    const last = startOfWeek(today)
+    while (ts <= last) {
+      const d = new Date(ts)
+      const next = new Date(ts)
+      next.setDate(next.getDate() + 7)
+      const endD = new Date(next.getTime() - 86400000)
+      out.push({
+        key: `w${ts}`,
+        ts,
+        end: next.getTime(),
+        label: `${d.getMonth() + 1}/${d.getDate()}`,
+        fullLabel: `${d.getMonth() + 1}/${d.getDate()} – ${endD.getMonth() + 1}/${endD.getDate()}`,
+        sec: 0,
+        yen: 0,
+      })
+      ts = next.getTime()
+    }
   } else {
-    start.setDate(1)
-    end = today
+    let ts = startOfMonth(from)
+    const last = startOfMonth(today)
+    while (ts <= last) {
+      const d = new Date(ts)
+      const next = addMonths(ts, 1)
+      out.push({
+        key: `m${ts}`,
+        ts,
+        end: next,
+        label: `${d.getMonth() + 1}`,
+        fullLabel: `${d.getFullYear()}年${d.getMonth() + 1}月`,
+        sec: 0,
+        yen: 0,
+      })
+      ts = next
+    }
   }
 
-  const out: DayBucket[] = []
-  const cursor = new Date(start)
-  while (cursor.getTime() <= end) {
-    const ts = cursor.getTime()
-    out.push({ key: dateKey(ts), ts, dow: (cursor.getDay() + 6) % 7, sec: 0, yen: 0 })
-    cursor.setDate(cursor.getDate() + 1)
-  }
   return out
 }
 
-/** 期間のうち、今日までに経過した日数。1日あたりの平均を出すときに使う。 */
-export function elapsedDays(days: DayBucket[], now: number = Date.now()): number {
-  const today = startOfDay(now)
-  return Math.max(1, days.filter((d) => d.ts <= today).length)
-}
-
-export function fillDays(
-  days: DayBucket[],
+export function fillBuckets(
+  buckets: Bucket[],
   sessions: Session[],
   transactions: Transaction[],
-): DayBucket[] {
-  const index = new Map(days.map((d) => [d.key, d]))
+): Bucket[] {
+  if (buckets.length === 0) return buckets
+  const from = buckets[0].ts
+  const to = buckets[buckets.length - 1].end
+
+  // 区間は時刻順に並んでいるので、二分探索で振り分ける
+  const find = (ts: number): Bucket | null => {
+    if (ts < from || ts >= to) return null
+    let lo = 0
+    let hi = buckets.length - 1
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1
+      const b = buckets[mid]
+      if (ts < b.ts) hi = mid - 1
+      else if (ts >= b.end) lo = mid + 1
+      else return b
+    }
+    return null
+  }
+
   for (const s of sessions) {
-    const d = index.get(dateKey(s.startedAt))
-    if (d) d.sec += s.durationSec
+    const b = find(s.startedAt)
+    if (b) b.sec += s.durationSec
   }
   for (const t of transactions) {
-    const d = index.get(dateKey(t.occurredAt))
-    if (d) d.yen += t.amount
+    const b = find(t.occurredAt)
+    if (b) b.yen += t.amount
   }
-  return days
+  return buckets
 }
 
-export interface TagSlice {
-  id: string
-  name: string
-  color: string
-  sec: number
-  yen: number
+/** 期間中の経過日数。1日あたりの平均を出すときに使う。 */
+export function elapsedDaysIn(buckets: Bucket[], now: number = Date.now()): number {
+  if (buckets.length === 0) return 1
+  const from = buckets[0].ts
+  const to = Math.min(buckets[buckets.length - 1].end, startOfDay(now) + 86400000)
+  return Math.max(1, Math.round((to - from) / 86400000))
 }
 
 const OTHER_COLOR = '#78808F'
@@ -98,15 +219,24 @@ export function hourHistogram(sessions: Session[], from: number, to: number): nu
   return hours
 }
 
+export interface TagSlice {
+  id: string
+  name: string
+  color: string
+  sec: number
+  yen: number
+}
+
 /**
- * タグ別の集計。9件目以降は「その他」にまとめる。
- * 色を9つ目以降に作り足すと、既存の色と見分けがつかなくなるため。
+ * タグ別の集計。区分が多すぎると色で見分けがつかなくなるので、
+ * 上位だけ残して残りは「その他」にまとめる。
  */
 export function aggregateByTag(
   tags: Tag[],
   sessions: Session[],
   transactions: Transaction[],
   from: number,
+  to: number,
   key: 'sec' | 'yen',
   maxSlices = 6,
 ): TagSlice[] {
@@ -130,8 +260,10 @@ export function aggregateByTag(
     return s
   }
 
-  for (const s of sessions) if (s.startedAt >= from) slot(s.tagId).sec += s.durationSec
-  for (const t of transactions) if (t.occurredAt >= from) slot(t.tagId).yen += t.amount
+  for (const s of sessions)
+    if (s.startedAt >= from && s.startedAt < to) slot(s.tagId).sec += s.durationSec
+  for (const t of transactions)
+    if (t.occurredAt >= from && t.occurredAt < to) slot(t.tagId).yen += t.amount
 
   const rows = [...map.values()].filter((r) => r[key] > 0).sort((a, b) => b[key] - a[key])
   if (rows.length <= maxSlices) return rows
@@ -148,4 +280,15 @@ export function aggregateByTag(
   return head
 }
 
-export const DOW_LABELS = ['月', '火', '水', '木', '金', '土', '日'] as const
+/** 軸ラベルを間引く。棒が多いときに数字が重なって潰れるのを防ぐ。 */
+export function thinLabels(buckets: Bucket[], maxLabels = 8): string[] {
+  const n = buckets.length
+  const step = Math.max(1, Math.ceil(n / maxLabels))
+  return buckets.map((b, i) => {
+    if (i === 0 || i === n - 1) return b.label
+    if (i % step !== 0) return ''
+    // 末尾のラベルと近すぎるものは落とす。重なって読めなくなるため。
+    if (n - 1 - i < step * 0.6) return ''
+    return b.label
+  })
+}
