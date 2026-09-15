@@ -51,6 +51,27 @@ export interface Transaction extends Base {
   name: string
   /** 発生時刻。時間の記録と同じ絶対時刻で持ち、統合タイムラインで並べられるようにする。 */
   occurredAt: number
+  /** 固定費から自動で作られた支出なら、その固定費のID */
+  recurringId: Id | null
+}
+
+/**
+ * 毎月の固定支出（サブスク・家賃・定期代など）。
+ *
+ * これ自体は「毎月いくら出ていくか」の設定でしかなく、
+ * 実際の支出は支払日を過ぎたときに transactions へ自動で計上される。
+ * 計上済みの支出には `rec-{固定費ID}-{年月}` という決まったIDを付けるので、
+ * 同じ月に二重計上されることがない。
+ */
+export interface Recurring extends Base {
+  name: string
+  amount: number
+  tagId: Id | null
+  /** 毎月の支払日（1〜31）。31日が無い月は月末に丸める。 */
+  dayOfMonth: number
+  active: boolean
+  /** 計上を始める月（YYYY-MM）。これより前には遡らない。 */
+  startMonth: string
 }
 
 export interface Settings {

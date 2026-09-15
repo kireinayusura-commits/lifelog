@@ -1,11 +1,20 @@
 import Dexie, { type Table } from 'dexie'
-import type { ActiveTimer, Group, Session, Settings, Tag, Transaction } from './types'
+import type {
+  ActiveTimer,
+  Group,
+  Recurring,
+  Session,
+  Settings,
+  Tag,
+  Transaction,
+} from './types'
 
 export class LifeLogDB extends Dexie {
   groups!: Table<Group, string>
   tags!: Table<Tag, string>
   sessions!: Table<Session, string>
   transactions!: Table<Transaction, string>
+  recurring!: Table<Recurring, string>
   settings!: Table<Settings, string>
   activeTimer!: Table<ActiveTimer, string>
 
@@ -31,6 +40,12 @@ export class LifeLogDB extends Dexie {
     this.version(2).stores({
       transactions: 'id, occurredAt, tagId, updatedAt, deletedAt',
       categories: null,
+    })
+
+    // version(3) — 毎月の固定支出
+    this.version(3).stores({
+      recurring: 'id, active, updatedAt, deletedAt',
+      transactions: 'id, occurredAt, tagId, recurringId, updatedAt, deletedAt',
     })
   }
 }
