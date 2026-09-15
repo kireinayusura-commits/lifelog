@@ -1,5 +1,5 @@
 import { db } from './db'
-import type { Base, Group, Id, Recurring, Session, Tag, Transaction } from './types'
+import type { Base, Group, Id, Recurring, Session, Tag, TagScope, Transaction } from './types'
 import { TAG_COLORS } from './types'
 
 export function newId(): Id {
@@ -24,13 +24,18 @@ export function alive<T extends Base>(rows: T[] | undefined): T[] {
 
 // ---------- グループ ----------
 
-export async function createGroup(name: string, color?: string): Promise<Id> {
+export async function createGroup(
+  name: string,
+  scope: TagScope = 'both',
+  color?: string,
+): Promise<Id> {
   const count = await db.groups.count()
   const g: Group = {
     ...stamp(),
     name: name.trim(),
     color: color ?? TAG_COLORS[count % TAG_COLORS.length],
     order: count,
+    scope,
   }
   await db.groups.add(g)
   return g.id

@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie'
+import { useLiveQuery } from 'dexie-react-hooks'
 import type {
   ActiveTimer,
   Group,
@@ -47,6 +48,17 @@ export class LifeLogDB extends Dexie {
       recurring: 'id, active, updatedAt, deletedAt',
       transactions: 'id, occurredAt, tagId, recurringId, updatedAt, deletedAt',
     })
+
+    // version(4) — タググループに用途を持たせる。
+    // 索引は変えないので stores は触らず、既存のグループに「両方」を入れるだけ。
+    this.version(4).upgrade((tx) =>
+      tx
+        .table('groups')
+        .toCollection()
+        .modify((g) => {
+          if (!g.scope) g.scope = 'both'
+        }),
+    )
   }
 }
 
@@ -58,7 +70,17 @@ export const DEFAULT_SETTINGS: Settings = {
   monthlyBudget: null,
   lastBackupAt: null,
   longRunWarnHours: 8,
+  showSeconds: true,
   updatedAt: 0,
+}
+
+/**
+ * 記録の表示に秒を含めるか。未設定なら含める。
+ * 「1分30秒の記録が『1分』と表示される」のを避けるため、既定は有効。
+ */
+export function useShowSeconds(): boolean {
+  const s = useLiveQuery(() => db.settings.get('settings'), [], undefined)
+  return s?.showSeconds ?? true
 }
 
 export async function getSettings(): Promise<Settings> {

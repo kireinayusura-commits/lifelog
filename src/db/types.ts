@@ -13,11 +13,26 @@ export interface Base {
   deletedAt: number | null
 }
 
+/**
+ * タグの用途。グループ単位で決める。
+ * これで、タイマーに「ゲーム課金」が出てきたり、
+ * 支出登録に「英語」が出てきたりするのを防ぐ。
+ */
+export type TagScope = 'both' | 'time' | 'money'
+
+export const SCOPE_LABEL: Record<TagScope, string> = {
+  both: '両方',
+  time: '時間だけ',
+  money: 'お金だけ',
+}
+
 /** ユーザーが自由に作る分類の器。「勉強」「趣味」などのプリセットは持たない。 */
 export interface Group extends Base {
   name: string
   color: string
   order: number
+  /** このグループのタグをどこで出すか。グループに属さないタグは常に「両方」。 */
+  scope: TagScope
 }
 
 /** 統合の背骨。時間の記録にも支出にも、同じタグを付けられる。 */
@@ -80,6 +95,8 @@ export interface Settings {
   monthlyBudget: number | null
   lastBackupAt: number | null
   longRunWarnHours: number
+  /** 記録の表示を秒まで出すか。計測自体は常に秒単位で行われる。 */
+  showSeconds: boolean
   updatedAt: number
 }
 
