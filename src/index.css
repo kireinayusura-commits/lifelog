@@ -71,14 +71,29 @@
 html {
   color-scheme: light dark;
   -webkit-text-size-adjust: 100%;
+  height: 100%;
 }
 
+/*
+ * ページ全体をスクロールさせず、中身だけをスクロールさせる。
+ *
+ * 下部メニューを position:fixed で貼り付ける作りだと、iOS の
+ * ラバーバンド（端で引っぱると跳ね返る動き）のときにメニューが一緒に
+ * ずれてしまう。画面の高さを固定した器にして、その中の本文だけを
+ * 動かす構造にすれば、メニューはそもそも動きようがない。
+ */
 body {
+  height: 100%;
+  overflow: hidden;
   background: var(--c-paper);
   color: var(--c-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
-  overscroll-behavior-y: none;
+  overscroll-behavior: none;
+}
+
+#root {
+  height: 100%;
 }
 
 /* iOS のホーム画面起動時にセーフエリアを確保する */

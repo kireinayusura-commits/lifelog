@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { seedIfEmpty } from './db/repo'
+import { materializeRecurring, seedIfEmpty } from './db/repo'
 import { TimerScreen } from './screens/TimerScreen'
 import { ExpenseScreen } from './screens/ExpenseScreen'
 import { RecordsScreen } from './screens/RecordsScreen'
@@ -60,11 +60,15 @@ export default function App() {
 
   useEffect(() => {
     seedIfEmpty()
+    // 支払日を過ぎた固定費を計上する。何度呼ばれても二重にはならない。
+    materializeRecurring()
   }, [])
 
   return (
-    <div className="min-h-dvh bg-paper">
-      <main className="mx-auto max-w-lg">
+    // 画面いっぱいの器。高さは固定で、この要素自体はスクロールしない。
+    <div className="flex h-dvh flex-col overflow-hidden bg-paper">
+      {/* スクロールするのはここだけ */}
+      <main className="mx-auto w-full max-w-lg flex-1 overflow-y-auto overscroll-contain">
         {tab === 'timer' && <TimerScreen />}
         {tab === 'expense' && <ExpenseScreen />}
         {tab === 'records' && <RecordsScreen />}
@@ -76,7 +80,7 @@ export default function App() {
       {active && tab !== 'timer' && (
         <button
           onClick={() => setTab('timer')}
-          className="safe-bottom fixed inset-x-0 bottom-16 z-30 mx-auto flex max-w-lg items-center justify-center gap-2 px-4"
+          className="mx-auto flex w-full max-w-lg shrink-0 items-center justify-center px-4 pb-2"
         >
           <span className="flex items-center gap-2 rounded-full bg-time px-4 py-2 text-[13px] font-semibold text-paper">
             <span
@@ -89,7 +93,8 @@ export default function App() {
         </button>
       )}
 
-      <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-rule bg-surface/95 backdrop-blur">
+      {/* 器の一番下に置くだけ。貼り付けていないので、スクロールしても動かない */}
+      <nav className="safe-bottom shrink-0 border-t border-rule bg-surface">
         <div className="mx-auto flex max-w-lg">
           {TABS.map((t) => {
             const on = tab === t.id
