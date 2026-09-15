@@ -4,6 +4,7 @@ import { db } from '../db/db'
 import { alive, createTransaction } from '../db/repo'
 import { TagPicker, useTags } from '../components/TagPicker'
 import { ExpenseEditModal } from '../components/ExpenseEditModal'
+import { RecurringCard } from '../components/RecurringCard'
 import { Card, Dot, inputClass } from '../components/ui'
 import type { Transaction } from '../db/types'
 import { MAX_AMOUNT_DIGITS, formatYen, groupDigits } from '../lib/money'
@@ -73,7 +74,7 @@ export function ExpenseScreen() {
 
   return (
     <div className="min-h-full">
-      <div className="safe-top px-4 pt-2 pb-28">
+      <div className="safe-top px-4 pt-2 pb-6">
         <Card className="overflow-hidden">
           {/* ---- 金額 ---- */}
           <div className="px-5 pt-5 pb-4">
@@ -181,12 +182,14 @@ export function ExpenseScreen() {
             </Card>
           )}
         </div>
+
+        <RecurringCard />
       </div>
 
       <ExpenseEditModal target={editing} onClose={() => setEditing(null)} />
 
       {toast && (
-        <div className="safe-bottom pointer-events-none fixed inset-x-0 bottom-20 z-40 flex justify-center px-4">
+        <div className="safe-bottom pointer-events-none fixed inset-x-0 bottom-24 z-40 flex justify-center px-4">
           <div className="rounded-full bg-ink px-4 py-2.5 text-[13px] font-medium text-paper">
             {toast}
           </div>

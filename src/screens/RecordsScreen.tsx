@@ -46,7 +46,8 @@ export function RecordsScreen() {
   const tags = useTags()
   const [draft, setDraft] = useState<Draft | null>(null)
   const [editingTx, setEditingTx] = useState<Transaction | null>(null)
-  const [view, setView] = useState<'list' | 'chart'>('list')
+  // 履歴より見る頻度が高いので、開いたときはグラフを出す
+  const [view, setView] = useState<'chart' | 'list'>('chart')
 
   /** 時間と支出を1本の履歴にまとめる。共通タグの効果はここで一番はっきり出る。 */
   const days = useMemo(() => {
@@ -119,8 +120,8 @@ export function RecordsScreen() {
       <div className="mb-4 flex rounded-xl border border-rule bg-surface p-1">
         {(
           [
-            ['list', '履歴'],
             ['chart', 'グラフ'],
+            ['list', '履歴'],
           ] as const
         ).map(([v, label]) => (
           <button

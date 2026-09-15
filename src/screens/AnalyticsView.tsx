@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/db'
 import { alive } from '../db/repo'
 import { useTags } from '../components/TagPicker'
-import { DayBars, StatTile, TagBars } from '../components/charts'
+import { DayBars, DayClock, Donut, StatTile } from '../components/charts'
 import { Card } from '../components/ui'
 import {
   DOW_LABELS,
@@ -11,6 +11,7 @@ import {
   buildDays,
   elapsedDays,
   fillDays,
+  hourHistogram,
   type Period,
 } from '../lib/analytics'
 import { formatYen } from '../lib/money'
@@ -28,17 +29,19 @@ export function AnalyticsView() {
   const [selected, setSelected] = useState<number | null>(null)
   const [showTable, setShowTable] = useState(false)
 
-  const { days, totalSec, totalYen, byTime, byMoney } = useMemo(() => {
+  const { days, totalSec, totalYen, byTime, byMoney, hours } = useMemo(() => {
     const ss = alive(sessions)
     const ts = alive(transactions)
     const base = fillDays(buildDays(period), ss, ts)
     const f = base.length ? base[0].ts : Date.now()
+    const to = base.length ? base[base.length - 1].ts + 86400000 : Date.now()
     return {
       days: base,
       totalSec: base.reduce((a, d) => a + d.sec, 0),
       totalYen: base.reduce((a, d) => a + d.yen, 0),
       byTime: aggregateByTag(tags, ss, ts, f, 'sec'),
       byMoney: aggregateByTag(tags, ss, ts, f, 'yen'),
+      hours: hourHistogram(ss, f, to),
     }
   }, [sessions, transactions, tags, period])
 
@@ -192,16 +195,28 @@ export function AnalyticsView() {
         )}
       </Card>
 
-      {/* タグ別の内訳 */}
+      {/* 何時に活動しているか */}
+      <Card className="px-4 py-4">
+        <div className="flex items-baseline justify-between">
+          <h3 className="text-[13px] font-bold">何時に活動しているか</h3>
+          <span className="text-[11px] text-muted">24時間</span>
+        </div>
+        <div className="mt-2">
+          <DayClock hours={hours} color={TIME_COLOR} format={formatDuration} />
+        </div>
+      </Card>
+
+      {/* タグ別の割合 */}
       <Card className="px-4 py-4">
         <h3 className="text-[13px] font-bold">
           何に時間を使ったか<span className="ml-2 text-[11px] font-normal text-muted">タグ別</span>
         </h3>
         <div className="mt-3">
-          <TagBars
+          <Donut
             rows={byTime.map((r) => ({ id: r.id, name: r.name, color: r.color, value: r.sec }))}
             total={totalSec}
             format={formatDuration}
+            centerLabel="合計"
           />
         </div>
       </Card>
@@ -211,10 +226,11 @@ export function AnalyticsView() {
           何にお金を使ったか<span className="ml-2 text-[11px] font-normal text-muted">タグ別</span>
         </h3>
         <div className="mt-3">
-          <TagBars
+          <Donut
             rows={byMoney.map((r) => ({ id: r.id, name: r.name, color: r.color, value: r.yen }))}
             total={totalYen}
             format={formatYen}
+            centerLabel="合計"
           />
         </div>
       </Card>

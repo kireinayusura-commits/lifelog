@@ -62,7 +62,7 @@ export function TimerScreen() {
 
   return (
     <div className="min-h-full">
-      <div className="safe-top px-4 pt-2 pb-28">
+      <div className="safe-top px-4 pt-2 pb-6">
         {/* ---- 計測パネル ---- */}
         <Card className="overflow-hidden">
           <div className="px-5 pt-6 pb-5 text-center">
@@ -231,7 +231,7 @@ export function TimerScreen() {
       </Modal>
 
       {toast && (
-        <div className="safe-bottom pointer-events-none fixed inset-x-0 bottom-20 z-40 flex justify-center px-4">
+        <div className="safe-bottom pointer-events-none fixed inset-x-0 bottom-24 z-40 flex justify-center px-4">
           <div className="rounded-full bg-ink px-4 py-2.5 text-[13px] font-medium text-paper">
             {toast}
           </div>
