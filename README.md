@@ -161,11 +161,22 @@ Phase 3 でクラウド同期を足すときにスキーマを作り直さずに
 
 ```
 src/
-  db/        types.ts / db.ts / repo.ts / backup.ts
-  timer/     useTimer.ts      ← 絶対時刻方式の計測ロジック
-  screens/   TimerScreen / RecordsScreen / TagsScreen / SettingsScreen
-  components/ ui.tsx / TagPicker.tsx
-  lib/       time.ts
+  db/         types.ts / db.ts / repo.ts / backup.ts
+  timer/      useTimer.ts   ← 絶対時刻方式の計測ロジック
+              logic.ts      ← 開始してよいかの判断（画面から切り離してある）
+  sync/       manager.ts    ← 同期の常駐係。アプリ全体で1つ
+              engine.ts / merge.ts / transport.ts / client.ts / useSync.ts
+              watch.ts      ← Apple Watch 用の合鍵
+  screens/    TimerScreen / ExpenseScreen / RecordsScreen / TagsScreen / SettingsScreen
+  components/ ui.tsx / TagPicker.tsx / charts.tsx / AccountCard.tsx / WatchCard.tsx
+  lib/        time.ts / money.ts / analytics.ts
+supabase/
+  schema.sql  同期のテーブルと番人      SETUP.md  設定手順と安全確認
+  watch.sql   Watch 用の関数と合鍵      WATCH.md  ショートカットの作り方
+test/
+  sync.test.ts    2〜3台を模した同期の通し検証
+  watch.test.ts   SQL が書いた実データをアプリが読めるかの検証
+  pg/             本物の PostgreSQL で SQL をそのまま動かす検証一式
 ```
 
 Vite + React + TypeScript / Dexie (IndexedDB) / Tailwind CSS v4 / vite-plugin-pwa
@@ -350,9 +361,77 @@ npm test
 | 3台目が過去の記録を全部受け取れる | ✅ |
 | 時計がずれていても送信が止まる | ✅ |
 | 送信に失敗したら次回やり直される | ✅ |
+| 他の端末が計測中のとき、開始前に気づける | ✅ |
+| 自分が送った分の知らせで無駄に取りに行かない | ✅ |
 
 **実機で確かめる必要があるのは、通信そのものと、他人からデータが読めないこと。**
 後者の手順は `supabase/SETUP.md` の「安全確認」にある。
+
+---
+
+## Apple Watch から使う
+
+Watch には PWA を入れられないので、**「ショートカット」アプリからサーバーへ
+直接1回だけ通信する**形にした。サーバー側に記録が入れば、あとは同期の仕組みが
+そのまま働いて全端末に届く。手順は `supabase/WATCH.md`、SQL は `supabase/watch.sql`。
+
+できるのは3つだけ。計測の開始／停止（押すたびに入れ替わる）、支出の記録、状態の確認。
+
+### 合鍵
+
+ショートカットにメールとパスワードを書かせたくないので、**Watch 専用の合鍵を1本**
+持たせる（`watch_keys` 表）。合鍵は32文字（約160ビット）で、アプリの設定画面から
+いつでも作り直せる＝その場で失効する。
+
+合鍵でできるのは**決まった4つの操作だけ**で、記録を読み出すことはできない。
+`records` を直接触る内部関数（`watch_put` など）は `revoke ... from public` してあり、
+`security definer` の中からしか呼べない。これを忘れると、合鍵を持たない誰でも
+他人の `user_id` を指定して書き込めてしまう。
+
+### タイマーの扱い
+
+Watch から始めた計測は `deviceId` が `apple-watch` になる。これは
+**「画面を持たない出どころ」として、どの端末からも自分のものとして扱う**
+（`timer/logic.ts` の `HEADLESS`）。他の端末のときのような「取り合いの確認」を
+出さないのは、Watch 側に取り合う画面が無いため。計測中の表示には
+「Apple Watch から」と出して、どこで押したかは分かるようにしてある。
+
+### 検証
+
+**Supabase には接続できないが、PostgreSQL そのものは手元で動かせる。**
+そこで Supabase の土台（`auth` スキーマ・`anon` / `authenticated` ロール・
+realtime のパブリケーション）だけを `test/pg/stub.sql` で真似て、
+`schema.sql` と `watch.sql` を**1文字も変えずに**入れて関数を実際に呼んでいる。
+
+```bash
+bash test/pg/run.sh   # PostgreSQL 側（51項目）
+npm test              # 同期とアプリ側の取り込み
+```
+
+`run.sh` は、関数が実際に書いた行を `test/pg/records.json` に出す。
+`test/watch.test.ts` はそれを同期の経路にそのまま流し込み、
+**アプリの型どおりに入るか**を確かめる。SQL とアプリで項目名がひとつ食い違うと
+「Watch で押したのに何も増えない」という気づきにくい壊れ方をするので、
+ここだけは実データで突き合わせている。
+
+| 確認内容 | |
+| --- | --- |
+| 合鍵が違えば何もできない／短い合鍵は照合前に断る | ✅ |
+| 状態の確認では何も書き換わらない | ✅ |
+| タグの一覧がアプリの絞り込み（用途・アーカイブ・削除）と一致する | ✅ |
+| 1つのボタンで開始と停止が入れ替わる | ✅ |
+| 止めると記録になり、長さ・タグ・メモが引き継がれる | ✅ |
+| 1秒未満は記録しない（計測は止まる） | ✅ |
+| 支出が金額・タグ・名前つきで入る／小数は四捨五入 | ✅ |
+| 0円・マイナス・桁違いの金額を断る | ✅ |
+| 他人の合鍵では自分の記録に一切手が届かない | ✅ |
+| 未ログインから内部関数・合鍵の一覧・記録のどれも触れない | ✅ |
+| Watch が書いたものがアプリの型どおりに入る | ✅ |
+| 受け取ったものを送り返さない（往復しない） | ✅ |
+
+**実機で確かめる必要があるのは、ショートカットからの通信そのもの。**
+アプリの設定画面に「つながるか試す」を置いてあり、
+ショートカットとまったく同じ道筋（同じURL・同じヘッダ・同じ本文）で呼べる。
 
 ## 次に実装するもの
 

@@ -10,9 +10,23 @@ export function liveTimer(t: ActiveTimer | undefined | null): ActiveTimer | null
   return t
 }
 
-/** 他の端末で走っているタイマーか。'legacy' は同期を入れる前からある行。 */
+/**
+ * 画面を持たない出どころ。ここから始まった計測は「他の端末のもの」とは見なさない。
+ *
+ * - 'legacy'       同期を入れる前からある行
+ * - 'apple-watch'  ショートカット経由。Watch 側に画面が無いので、
+ *                  手元の端末が一時停止やタグ付けをしても取り合いにならない
+ */
+const HEADLESS = new Set(['legacy', 'apple-watch'])
+
+/** 他の端末で走っているタイマーか */
 export function isForeignTimer(t: ActiveTimer | null, myId: string): boolean {
-  return !!t && t.deviceId !== myId && t.deviceId !== 'legacy'
+  return !!t && t.deviceId !== myId && !HEADLESS.has(t.deviceId)
+}
+
+/** Apple Watch から始まった計測か */
+export function isFromWatch(t: ActiveTimer | null | undefined): boolean {
+  return !!t && t.deviceId === 'apple-watch'
 }
 
 /** 開始を押したときの結果 */

@@ -6,7 +6,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",
-    "test": "tsx test/sync.test.ts"
+    "test": "tsx test/sync.test.ts && tsx test/watch.test.ts",
+    "test:sql": "bash test/pg/run.sh"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

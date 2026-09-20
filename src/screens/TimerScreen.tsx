@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db, useShowSeconds } from '../db/db'
 import { alive } from '../db/repo'
 import { useTimer } from '../timer/useTimer'
+import { isFromWatch } from '../timer/logic'
 import { TagPicker, useTags } from '../components/TagPicker'
 import { Button, Card, Dot, Field, Modal, inputClass } from '../components/ui'
 import { SessionEditModal, type SessionTarget } from '../components/SessionEditModal'
@@ -120,6 +121,12 @@ export function TimerScreen() {
                 <span>{activeTag ? activeTag.name : 'タグなし'}</span>
                 <span aria-hidden>·</span>
                 <span>{formatTimeOfDay(active.originStartedAt)} 開始</span>
+                {isFromWatch(active) && (
+                  <>
+                    <span aria-hidden>·</span>
+                    <span>Apple Watch から</span>
+                  </>
+                )}
               </div>
             ) : (
               <p className="mx-auto mt-2 max-w-[18rem] text-[12.5px] leading-relaxed text-muted">

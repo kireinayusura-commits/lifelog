@@ -4,6 +4,7 @@ import { db, saveSettings } from '../db/db'
 import { downloadBackup, readBackupFile } from '../db/backup'
 import { Button, Card, Field, Screen, inputClass } from '../components/ui'
 import { AccountCard } from '../components/AccountCard'
+import { WatchCard } from '../components/WatchCard'
 
 export function SettingsScreen() {
   const settings = useLiveQuery(() => db.settings.get('settings'), [], undefined)
@@ -30,6 +31,7 @@ export function SettingsScreen() {
   return (
     <Screen title="設定">
       <AccountCard />
+      <WatchCard />
 
       <section className="mt-6">
         <h2 className="mb-2 px-1 text-[13px] font-bold">データのバックアップ</h2>
