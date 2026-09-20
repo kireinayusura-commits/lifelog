@@ -6,7 +6,6 @@ import { RecordsScreen } from './screens/RecordsScreen'
 import { TagsScreen } from './screens/TagsScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { useTimer } from './timer/useTimer'
-import { initSync } from './sync/manager'
 import { formatClock } from './lib/time'
 
 type TabId = 'timer' | 'expense' | 'records' | 'tags' | 'settings'
@@ -63,9 +62,6 @@ export default function App() {
     seedIfEmpty()
     // 支払日を過ぎた固定費を計上する。何度呼ばれても二重にはならない。
     materializeRecurring()
-    // 同期の常駐を始める。設定画面を開いていなくても、
-    // 他の端末の変更はここで受け取る。
-    initSync()
   }, [])
 
   return (

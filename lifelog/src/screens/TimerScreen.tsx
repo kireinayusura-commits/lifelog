@@ -16,21 +16,8 @@ import {
 } from '../lib/time'
 
 export function TimerScreen() {
-  const {
-    active,
-    loading,
-    running,
-    isForeign,
-    checking,
-    elapsedMs,
-    requestStart,
-    takeOver,
-    pause,
-    resume,
-    stop,
-    discard,
-    setTag,
-  } = useTimer()
+  const { active, loading, running, isForeign, elapsedMs, start, takeOver, pause, resume, stop, discard, setTag } =
+    useTimer()
   const tags = useTags()
   const [pendingTag, setPendingTag] = useState<string | null>(null)
   const [adjustOpen, setAdjustOpen] = useState(false)
@@ -61,16 +48,6 @@ export function TimerScreen() {
   const showToast = (msg: string) => {
     setToast(msg)
     window.setTimeout(() => setToast(null), 2600)
-  }
-
-  /**
-   * 開始を押したとき。
-   * 先にサーバーへ追いついてから始めるので、他の端末が計測中なら
-   * ここで切り替えの確認に切り替わる（2台で別々に計り始めない）。
-   */
-  const handleStart = async () => {
-    const r = await requestStart(pendingTag)
-    if (r === 'foreign') setTakeOverOpen(true)
   }
 
   const handleStop = async (endedAt?: number) => {
@@ -140,10 +117,9 @@ export function TimerScreen() {
                 <Button
                   variant="primary"
                   className="w-full py-3.5 text-[16px]"
-                  onClick={handleStart}
-                  disabled={checking}
+                  onClick={() => start(pendingTag)}
                 >
-                  {checking ? '確認中…' : '開始'}
+                  開始
                 </Button>
               </>
             ) : isForeign ? (

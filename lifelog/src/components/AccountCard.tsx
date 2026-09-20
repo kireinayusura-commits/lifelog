@@ -13,7 +13,7 @@ function ago(ts: number): string {
 }
 
 export function AccountCard() {
-  const { phase, email, live, lastSyncAt, lastError, sync } = useSync()
+  const { phase, email, lastSyncAt, lastError, sync } = useSync()
   const [mode, setMode] = useState<'in' | 'up'>('in')
   const [mail, setMail] = useState('')
   const [pass, setPass] = useState('')
@@ -135,19 +135,6 @@ export function AccountCard() {
         {phase === 'error' && lastError && (
           <p className="mt-2 text-[12.5px] leading-relaxed text-danger">{lastError}</p>
         )}
-
-        {/* 即時の同期がつながっているか。切れていても記録は失われない。 */}
-        <div className="mt-2 flex items-center gap-1.5 text-[12px] text-muted">
-          <span
-            aria-hidden
-            className={`inline-block h-1.5 w-1.5 rounded-full ${live ? 'bg-good' : 'bg-muted'}`}
-          />
-          <span>
-            {live
-              ? 'すぐ届く状態です'
-              : '知らせが届いていません。少し間をおいて同期します'}
-          </span>
-        </div>
 
         <div className="mt-3.5 flex flex-wrap gap-2.5">
           <Button variant="primary" onClick={sync} disabled={phase === 'syncing'}>

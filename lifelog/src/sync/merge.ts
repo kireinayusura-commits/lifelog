@@ -69,19 +69,6 @@ export function nextCursor(current: string | null, records: RemoteRecord[]): str
   return max
 }
 
-/**
- * サーバーからの知らせが、自分が送った分の跳ね返りか。
- *
- * 自分の書き込みも同じ経路で戻ってくるので、これを見分けないと
- * 「送る → 知らせが来る → 取りに行く」を一度きりとはいえ毎回繰り返す。
- * すでに手元に入っていると分かっている版なら、取りに行く必要はない。
- */
-export function isEchoOfKnown(knownUpdatedAt: number | undefined, updatedAt: unknown): boolean {
-  const v = Number(updatedAt)
-  if (!Number.isFinite(v)) return false
-  return knownUpdatedAt === v
-}
-
 /** 計測中のタイマーが、この端末のものか */
 export function isOwnTimer(
   timer: { deviceId: string; deletedAt: number | null } | null | undefined,

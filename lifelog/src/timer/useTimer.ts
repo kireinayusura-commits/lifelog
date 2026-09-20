@@ -4,10 +4,6 @@ import { db } from '../db/db'
 import { createSession } from '../db/repo'
 import type { ActiveTimer, Id } from '../db/types'
 import { deviceId, deviceName } from '../sync/device'
-import { catchUp } from '../sync/manager'
-import { blockingReason, isForeignTimer, liveTimer, type StartResult } from './logic'
-
-export type { StartResult }
 
 /**
  * 経過時間の算出。ここがタイマーの心臓部。
@@ -29,6 +25,12 @@ export function computeElapsedMs(t: ActiveTimer, now: number = Date.now()): numb
   return Math.max(0, t.accumulatedMs + (segment > 0 ? segment : 0))
 }
 
+/** 停止していないタイマーだけを返す（行は消さず deletedAt で表すため） */
+function liveTimer(t: ActiveTimer | undefined): ActiveTimer | null {
+  if (!t || t.deletedAt !== null) return null
+  return t
+}
+
 export function useTimer() {
   // 読み込み中は undefined、計測していないときは null を返す
   const active = useLiveQuery<ActiveTimer | null, undefined>(
@@ -41,9 +43,7 @@ export function useTimer() {
   const running = !!active && !active.isPaused
   const myId = deviceId()
   /** 他の端末で走っているタイマーか */
-  const isForeign = isForeignTimer(active ?? null, myId)
-  /** 開始前の確認中（サーバーに追いついている最中） */
-  const [checking, setChecking] = useState(false)
+  const isForeign = !!active && active.deviceId !== myId && active.deviceId !== 'legacy'
 
   useEffect(() => {
     // 表示を更新するためだけの interval。経過時間の計算には使わない。
@@ -162,38 +162,6 @@ export function useTimer() {
     await db.activeTimer.put({ ...t, deletedAt: n, updatedAt: n })
   }, [])
 
-  /**
-   * 「開始」を押したときの入口。
-   *
-   * 押した瞬間にサーバーへ追いつき、他の端末が計測中でないかを確かめてから始める。
-   * これをしないと、知らせが届く前に押した場合に2台で別々に計り始めてしまう。
-   *
-   * 通信が遅いときに操作が固まらないよう、確認は数秒で打ち切る。
-   * 打ち切って始めた場合でも、あとから届いた相手の計測が優先されるだけで、
-   * 記録が消えることはない。
-   */
-  const requestStart = useCallback(
-    async (tagId: Id | null): Promise<StartResult> => {
-      const before = blockingReason(await db.activeTimer.get('active'), myId)
-      if (before) return before
-
-      setChecking(true)
-      try {
-        await catchUp()
-      } finally {
-        setChecking(false)
-      }
-
-      // 待っている間に他の端末の計測が届いているかもしれないので、もう一度見る
-      const after = blockingReason(await db.activeTimer.get('active'), myId)
-      if (after) return after
-
-      await start(tagId)
-      return 'started'
-    },
-    [start, myId],
-  )
-
   /** 他の端末の計測を終わらせて、この端末で始め直す */
   const takeOver = useCallback(
     async (tagId: Id | null) => {
@@ -208,10 +176,8 @@ export function useTimer() {
     loading: active === undefined,
     running,
     isForeign,
-    checking,
     elapsedMs,
     start,
-    requestStart,
     takeOver,
     pause,
     resume,

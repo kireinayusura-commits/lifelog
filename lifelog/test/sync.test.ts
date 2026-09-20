@@ -12,8 +12,7 @@
 import 'fake-indexeddb/auto'
 import { LifeLogDB } from '../src/db/db'
 import { syncOnce, type PushRow, type SyncTransport } from '../src/sync/engine'
-import { isEchoOfKnown, type RemoteRecord } from '../src/sync/merge'
-import { blockingReason } from '../src/timer/logic'
+import type { RemoteRecord } from '../src/sync/merge'
 
 // ---------------------------------------------------------------- 偽サーバー
 
@@ -294,71 +293,6 @@ async function main() {
   await syncOnce(t, B)
   const retried = await B.tags.get('tag-retry')
   check('次の同期でちゃんと届く', retried?.name === '送信失敗するはずのタグ', retried?.name)
-
-  console.log('\n【11】他の端末が計測中のとき、「開始」を押す前に気づけるか')
-  // 端末Aで計測を始める。端末Bはまだ知らない。
-  const started2 = tick()
-  await A.activeTimer.put({
-    id: 'active',
-    tagId: null,
-    originStartedAt: started2,
-    segmentStartedAt: started2,
-    accumulatedMs: 0,
-    isPaused: false,
-    memo: '',
-    deviceId: 'device-A',
-    deviceName: 'iPhone',
-    createdAt: started2,
-    updatedAt: started2,
-    deletedAt: null,
-  })
-  await syncOnce(t, A)
-
-  // Bが同期する前に「開始」を押した場合、手元だけ見ていると止めようがない
-  const naive = blockingReason(await B.activeTimer.get('active'), 'device-B')
-  check('同期前は、手元だけでは気づけない（これが今までの問題）', naive === null, String(naive))
-
-  // 実際の処理と同じ順番：押した瞬間にサーバーへ追いついてから、もう一度見る
-  await syncOnce(t, B)
-  const guarded = blockingReason(await B.activeTimer.get('active'), 'device-B')
-  check('追いついたあとは「他の端末で計測中」と分かる', guarded === 'foreign', String(guarded))
-
-  // 自分の端末で計測中に押した場合は、切り替えではなく押し間違い
-  const own = blockingReason(await A.activeTimer.get('active'), 'device-A')
-  check('自分の計測中は切り替え確認を出さない', own === 'busy', String(own))
-
-  // 片付け（このあとの検証に持ち越さない）
-  const tStop2 = tick()
-  await A.activeTimer.update('active', { deletedAt: tStop2, updatedAt: tStop2 })
-  await syncOnce(t, A)
-  await syncOnce(t, B)
-
-  console.log('\n【12】自分が送った分の知らせで、取りに行かずに済むか')
-  const tEcho = tick()
-  await A.tags.add({
-    ...base('tag-echo', tEcho),
-    name: '知らせの確認用',
-    groupId: null,
-    color: '#3355D1',
-    archived: false,
-    order: 3,
-  })
-  await syncOnce(t, A)
-  // サーバーから返ってくる知らせは、いま自分が送った版そのもの
-  const knownA = (await A.pushed.get('tags:tag-echo'))?.updatedAt
-  check('自分の書き込みの跳ね返りだと見抜ける', isEchoOfKnown(knownA, tEcho))
-  check('文字列で届いても見抜ける（JSON経由でも数値として比べる）',
-    isEchoOfKnown(knownA, String(tEcho)))
-
-  // 他の端末が同じ行を直したときは、知らせを無視してはいけない
-  await syncOnce(t, B)
-  const tOther = tick()
-  await B.tags.update('tag-echo', { name: 'Bが直した', updatedAt: tOther })
-  await syncOnce(t, B)
-  check('他の端末の変更は跳ね返りと区別される', !isEchoOfKnown(knownA, tOther))
-  await syncOnce(t, A)
-  const echoed = await A.tags.get('tag-echo')
-  check('その変更はちゃんと届く', echoed?.name === 'Bが直した', echoed?.name)
 
   console.log('\n' + (failures === 0 ? '✅ すべて通過' : `❌ ${failures}件 失敗`))
   process.exit(failures === 0 ? 0 : 1)

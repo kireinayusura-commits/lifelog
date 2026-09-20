@@ -110,31 +110,6 @@ create policy "自分の記録だけ"
 revoke all on public.records from anon;
 grant select, insert, update, delete on public.records to authenticated;
 
--- ------------------------------------------------------------
---  4. 変更の即時通知（リアルタイム）
---
---  これが無いと、アプリは「ときどき自分から取りに行く」ことしか
---  できないので、別の端末での記録が最大5分遅れて届く。
---
---  この登録をすると、行が入った瞬間にサーバーから全端末へ
---  「変わったよ」と知らせが飛び、その場で取りに行けるようになる。
---
---  通知にも行レベルセキュリティがそのまま効くので、
---  自分の行の変更しか自分には届かない。
--- ------------------------------------------------------------
-do $$
-begin
-  if not exists (
-    select 1 from pg_publication_tables
-    where pubname = 'supabase_realtime'
-      and schemaname = 'public'
-      and tablename = 'records'
-  ) then
-    alter publication supabase_realtime add table public.records;
-  end if;
-end;
-$$;
-
 -- ============================================================
 --  確認用：下を実行して結果が空なら、未ログインからは読めていない
 --    select * from public.records;

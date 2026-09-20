@@ -1,0 +1,163 @@
+import { useMemo, useState } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db, useShowSeconds } from '../db/db'
+import { alive } from '../db/repo'
+import { useTags } from '../components/TagPicker'
+import { ExpenseEditModal } from '../components/ExpenseEditModal'
+import { SessionEditModal, type SessionTarget } from '../components/SessionEditModal'
+import { AnalyticsView } from './AnalyticsView'
+import { Button, Card, Dot, Screen } from '../components/ui'
+import type { Session, Transaction } from '../db/types'
+import { formatYen } from '../lib/money'
+import { dateKey, formatDateLabel, formatDuration, formatTimeOfDay } from '../lib/time'
+
+type Entry =
+  | { kind: 'session'; at: number; session: Session }
+  | { kind: 'expense'; at: number; tx: Transaction }
+
+export function RecordsScreen() {
+  const sessions = useLiveQuery(() => db.sessions.toArray(), [], undefined)
+  const transactions = useLiveQuery(() => db.transactions.toArray(), [], undefined)
+  const tags = useTags()
+  const [editingSession, setEditingSession] = useState<SessionTarget>(null)
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null)
+  // 履歴より見る頻度が高いので、開いたときはグラフを出す
+  const [view, setView] = useState<'chart' | 'list'>('chart')
+  const showSeconds = useShowSeconds()
+
+  /** 時間と支出を1本の履歴にまとめる。共通タグの効果はここで一番はっきり出る。 */
+  const days = useMemo(() => {
+    const entries: Entry[] = [
+      ...alive(sessions).map((s) => ({ kind: 'session' as const, at: s.startedAt, session: s })),
+      ...alive(transactions).map((t) => ({ kind: 'expense' as const, at: t.occurredAt, tx: t })),
+    ].sort((a, b) => b.at - a.at)
+
+    const map = new Map<string, Entry[]>()
+    for (const e of entries) {
+      const k = dateKey(e.at)
+      const list = map.get(k)
+      if (list) list.push(e)
+      else map.set(k, [e])
+    }
+    return [...map.entries()].map(([key, items]) => ({
+      key,
+      items,
+      ts: items[0].at,
+      totalSec: items.reduce((a, e) => a + (e.kind === 'session' ? e.session.durationSec : 0), 0),
+      totalYen: items.reduce((a, e) => a + (e.kind === 'expense' ? e.tx.amount : 0), 0),
+    }))
+  }, [sessions, transactions])
+
+  const tagOf = (id: string | null) => tags.find((t) => t.id === id) ?? null
+
+  return (
+    <Screen
+      title="記録"
+      action={
+        view === 'list' ? (
+          <Button onClick={() => setEditingSession('new')} className="px-3 py-1.5 text-[13.5px]">
+            + 時間を追加
+          </Button>
+        ) : undefined
+      }
+    >
+      <div className="mb-4 flex rounded-xl border border-rule bg-surface p-1">
+        {(
+          [
+            ['chart', 'グラフ'],
+            ['list', '履歴'],
+          ] as const
+        ).map(([v, label]) => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            aria-pressed={view === v}
+            className={`flex-1 rounded-lg py-2 text-[13.5px] font-semibold ${
+              view === v ? 'bg-surface2 text-ink' : 'text-muted'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'chart' ? (
+        <AnalyticsView />
+      ) : days.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-rule px-5 py-10 text-center text-[13.5px] leading-relaxed text-muted">
+          まだ記録がありません。
+          <br />
+          タイマーで計測するか、支出を記録してください。
+        </div>
+      ) : (
+        <div className="flex flex-col gap-5">
+          {days.map((d) => (
+            <section key={d.key}>
+              <div className="mb-2 flex items-baseline justify-between gap-3 px-1">
+                <h2 className="text-[13px] font-bold">{formatDateLabel(d.ts)}</h2>
+                <div className="tnum flex items-baseline gap-3 text-[13px] font-semibold">
+                  {d.totalSec > 0 && (
+                    <span className="text-time">{formatDuration(d.totalSec, showSeconds)}</span>
+                  )}
+                  {d.totalYen > 0 && <span className="text-money">{formatYen(d.totalYen)}</span>}
+                </div>
+              </div>
+
+              <Card className="divide-y divide-rulesoft">
+                {d.items.map((e) =>
+                  e.kind === 'session' ? (
+                    <button
+                      key={e.session.id}
+                      onClick={() => setEditingSession(e.session)}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left"
+                    >
+                      <Dot color={tagOf(e.session.tagId)?.color ?? 'var(--c-muted)'} />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[14.5px] font-medium">
+                          {tagOf(e.session.tagId)?.name ?? 'タグなし'}
+                        </div>
+                        <div className="tnum truncate text-[12px] text-muted">
+                          {formatTimeOfDay(e.session.startedAt)} –{' '}
+                          {formatTimeOfDay(e.session.endedAt)}
+                          {e.session.source === 'manual' && ' · 手動'}
+                          {e.session.memo && ` · ${e.session.memo}`}
+                        </div>
+                      </div>
+                      <div className="tnum text-[14px] font-semibold text-time">
+                        {formatDuration(e.session.durationSec, showSeconds)}
+                      </div>
+                    </button>
+                  ) : (
+                    <button
+                      key={e.tx.id}
+                      onClick={() => setEditingTx(e.tx)}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left"
+                    >
+                      <Dot color={tagOf(e.tx.tagId)?.color ?? 'var(--c-muted)'} />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[14.5px] font-medium">
+                          {e.tx.name || '（名称なし）'}
+                        </div>
+                        <div className="tnum truncate text-[12px] text-muted">
+                          {formatTimeOfDay(e.tx.occurredAt)}
+                          {tagOf(e.tx.tagId) && ` · ${tagOf(e.tx.tagId)!.name}`}
+                          {e.tx.recurringId && ' · 固定費'}
+                        </div>
+                      </div>
+                      <div className="tnum text-[14px] font-semibold text-money">
+                        {formatYen(e.tx.amount)}
+                      </div>
+                    </button>
+                  ),
+                )}
+              </Card>
+            </section>
+          ))}
+        </div>
+      )}
+
+      <ExpenseEditModal target={editingTx} onClose={() => setEditingTx(null)} />
+      <SessionEditModal target={editingSession} onClose={() => setEditingSession(null)} />
+    </Screen>
+  )
+}
