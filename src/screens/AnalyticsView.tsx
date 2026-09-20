@@ -33,6 +33,13 @@ export function AnalyticsView() {
   const [granularity, setGranularity] = useState<Granularity>('day')
   const [selected, setSelected] = useState<number | null>(null)
   const [showTable, setShowTable] = useState(false)
+  /** null なら全タグ。タグを選ぶと推移・24時間・合計がそのタグだけになる。 */
+  const [tagFilter, setTagFilter] = useState<string | null>(null)
+
+  // 絞り込み中のタグが消えたら「すべて」に戻す
+  useEffect(() => {
+    if (tagFilter && !tags.some((t) => t.id === tagFilter)) setTagFilter(null)
+  }, [tags, tagFilter])
 
   /** 全期間の起点。記録が1件も無ければ今日。 */
   const earliest = useMemo(() => {
@@ -50,23 +57,39 @@ export function AnalyticsView() {
     setSelected(null)
   }, [period, earliest])
 
-  const { buckets, totalSec, totalYen, byTime, byMoney, hours, from, to } = useMemo(() => {
-    const ss = alive(sessions)
-    const ts = alive(transactions)
-    const base = fillBuckets(buildBuckets(period, granularity, earliest), ss, ts)
-    const f = base.length ? base[0].ts : Date.now()
-    const t2 = base.length ? base[base.length - 1].end : Date.now()
-    return {
-      buckets: base,
-      from: f,
-      to: t2,
-      totalSec: base.reduce((a, b) => a + b.sec, 0),
-      totalYen: base.reduce((a, b) => a + b.yen, 0),
-      byTime: aggregateByTag(tags, ss, ts, f, t2, 'sec'),
-      byMoney: aggregateByTag(tags, ss, ts, f, t2, 'yen'),
-      hours: hourHistogram(ss, f, t2),
-    }
-  }, [sessions, transactions, tags, period, granularity, earliest])
+  const { buckets, totalSec, totalYen, byTime, byMoney, hours, from, to, tagsInPeriod } =
+    useMemo(() => {
+      const allSessions = alive(sessions)
+      const allTx = alive(transactions)
+
+      // 期間の範囲は絞り込みに関係なく決まる
+      const frame = buildBuckets(period, granularity, earliest)
+      const f = frame.length ? frame[0].ts : Date.now()
+      const t2 = frame.length ? frame[frame.length - 1].end : Date.now()
+
+      // 推移・24時間・合計は絞り込み後のデータで作る
+      const ss = tagFilter ? allSessions.filter((s) => s.tagId === tagFilter) : allSessions
+      const ts = tagFilter ? allTx.filter((t) => t.tagId === tagFilter) : allTx
+      const base = fillBuckets(frame, ss, ts)
+
+      // 絞り込みのチップには、この期間に記録があるタグだけを出す
+      const used = new Set<string>()
+      for (const s of allSessions) if (s.tagId && s.startedAt >= f && s.startedAt < t2) used.add(s.tagId)
+      for (const t of allTx) if (t.tagId && t.occurredAt >= f && t.occurredAt < t2) used.add(t.tagId)
+
+      return {
+        buckets: base,
+        from: f,
+        to: t2,
+        totalSec: base.reduce((a, b) => a + b.sec, 0),
+        totalYen: base.reduce((a, b) => a + b.yen, 0),
+        // 内訳は常に全タグ。絞り込み中は表示しない
+        byTime: aggregateByTag(tags, allSessions, allTx, f, t2, 'sec'),
+        byMoney: aggregateByTag(tags, allSessions, allTx, f, t2, 'yen'),
+        hours: hourHistogram(ss, f, t2),
+        tagsInPeriod: tags.filter((t) => used.has(t.id)),
+      }
+    }, [sessions, transactions, tags, period, granularity, earliest, tagFilter])
 
   // 棒が少ないときに1本が帯のように太くならないよう、行の幅を絞る
   const chartMaxWidth = buckets.length <= 12 ? buckets.length * 40 : undefined
@@ -77,6 +100,18 @@ export function AnalyticsView() {
   const activeBuckets = buckets.filter((b) => b.sec > 0).length
 
   const unit = granularity === 'day' ? '日' : granularity === 'week' ? '週' : 'か月'
+  const activeTag = tagFilter ? (tags.find((t) => t.id === tagFilter) ?? null) : null
+
+  /** どのタグで見ているかを、絞り込みの効くグラフの見出しに必ず出す */
+  const ScopeMark = () =>
+    activeTag ? (
+      <span className="flex items-center gap-1.5 text-[11.5px] font-semibold" style={{ color: activeTag.color }}>
+        <span aria-hidden className="size-2 rounded-full" style={{ background: activeTag.color }} />
+        {activeTag.name}
+      </span>
+    ) : (
+      <span className="text-[11.5px] text-muted">すべてのタグ</span>
+    )
 
   return (
     <div className="flex flex-col gap-5">
@@ -120,6 +155,54 @@ export function AnalyticsView() {
             </button>
           ))}
         </div>
+
+        {/* タグの絞り込み。推移・24時間・合計に効く */}
+        {tagsInPeriod.length > 0 && (
+          <div className="-mx-4 overflow-x-auto px-4">
+            <div className="flex w-max items-center gap-1.5">
+              <button
+                onClick={() => {
+                  setTagFilter(null)
+                  setSelected(null)
+                }}
+                aria-pressed={tagFilter === null}
+                className={`shrink-0 rounded-full border px-3 py-1.5 text-[12.5px] font-semibold ${
+                  tagFilter === null
+                    ? 'border-ink bg-ink text-paper'
+                    : 'border-rule bg-surface text-muted'
+                }`}
+              >
+                すべて
+              </button>
+              {tagsInPeriod.map((t) => {
+                const on = tagFilter === t.id
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => {
+                      setTagFilter(on ? null : t.id)
+                      setSelected(null)
+                    }}
+                    aria-pressed={on}
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-semibold ${
+                      on ? 'border-transparent text-paper' : 'border-rule bg-surface text-ink2'
+                    }`}
+                    style={on ? { background: t.color } : undefined}
+                  >
+                    {!on && (
+                      <span
+                        aria-hidden
+                        className="size-2 rounded-full"
+                        style={{ background: t.color }}
+                      />
+                    )}
+                    {t.name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-2.5">
@@ -139,9 +222,12 @@ export function AnalyticsView() {
 
       {/* 推移 */}
       <Card className="px-4 py-4">
-        <div className="flex items-baseline justify-between">
-          <h3 className="text-[13px] font-bold">推移</h3>
-          <span className="text-[11.5px] text-muted">
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className="flex items-baseline gap-2 text-[13px] font-bold">
+            推移
+            <ScopeMark />
+          </h3>
+          <span className="shrink-0 text-[11.5px] text-muted">
             {sel ? '押すと解除' : '棒を押すと内訳'}
           </span>
         </div>
@@ -249,43 +335,70 @@ export function AnalyticsView() {
 
       {/* 何時に活動しているか */}
       <Card className="px-4 py-4">
-        <div className="flex items-baseline justify-between">
-          <h3 className="text-[13px] font-bold">何時に活動しているか</h3>
-          <span className="text-[11px] text-muted">24時間</span>
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className="flex items-baseline gap-2 text-[13px] font-bold">
+            何時に活動しているか
+            <ScopeMark />
+          </h3>
+          <span className="shrink-0 text-[11px] text-muted">24時間</span>
         </div>
         <div className="mt-2">
           <DayClock hours={hours} color={TIME_COLOR} format={formatDuration} />
         </div>
       </Card>
 
-      {/* タグ別の割合 */}
-      <Card className="px-4 py-4">
-        <h3 className="text-[13px] font-bold">
-          何に時間を使ったか<span className="ml-2 text-[11px] font-normal text-muted">タグ別</span>
-        </h3>
-        <div className="mt-3">
-          <Donut
-            rows={byTime.map((r) => ({ id: r.id, name: r.name, color: r.color, value: r.sec }))}
-            total={totalSec}
-            format={formatDuration}
-            centerLabel="合計"
-          />
-        </div>
-      </Card>
+      {/*
+        タグ別の割合。
+        1つのタグに絞っている間は円が1切れになって意味を持たないうえ、
+        上の合計（絞り込み後）と食い違う数字が同じ画面に並んでしまうので隠す。
+      */}
+      {activeTag ? (
+        <button
+          onClick={() => setTagFilter(null)}
+          className="rounded-2xl border border-dashed border-rule px-5 py-5 text-center text-[12.5px] leading-relaxed text-muted"
+        >
+          タグ別の内訳は「すべて」のときに表示されます。
+          <br />
+          <span className="underline">ここを押すと絞り込みを解除します</span>
+        </button>
+      ) : (
+        <>
+          <Card className="px-4 py-4">
+            <h3 className="text-[13px] font-bold">
+              何に時間を使ったか
+              <span className="ml-2 text-[11px] font-normal text-muted">タグ別</span>
+            </h3>
+            <div className="mt-3">
+              <Donut
+                rows={byTime.map((r) => ({ id: r.id, name: r.name, color: r.color, value: r.sec }))}
+                total={totalSec}
+                format={formatDuration}
+                centerLabel="合計"
+              />
+            </div>
+          </Card>
 
-      <Card className="px-4 py-4">
-        <h3 className="text-[13px] font-bold">
-          何にお金を使ったか<span className="ml-2 text-[11px] font-normal text-muted">タグ別</span>
-        </h3>
-        <div className="mt-3">
-          <Donut
-            rows={byMoney.map((r) => ({ id: r.id, name: r.name, color: r.color, value: r.yen }))}
-            total={totalYen}
-            format={formatYen}
-            centerLabel="合計"
-          />
-        </div>
-      </Card>
+          <Card className="px-4 py-4">
+            <h3 className="text-[13px] font-bold">
+              何にお金を使ったか
+              <span className="ml-2 text-[11px] font-normal text-muted">タグ別</span>
+            </h3>
+            <div className="mt-3">
+              <Donut
+                rows={byMoney.map((r) => ({
+                  id: r.id,
+                  name: r.name,
+                  color: r.color,
+                  value: r.yen,
+                }))}
+                total={totalYen}
+                format={formatYen}
+                centerLabel="合計"
+              />
+            </div>
+          </Card>
+        </>
+      )}
 
       {/* 集計範囲を明示しておく */}
       <p className="px-1 text-[11.5px] text-muted">

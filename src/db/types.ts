@@ -120,7 +120,30 @@ export interface ActiveTimer {
   accumulatedMs: number
   isPaused: boolean
   memo: string
+  /** どの端末で始めたか。他の端末では「iPhoneで計測中」と出すために使う。 */
+  deviceId: string
+  deviceName: string
+  createdAt: number
   updatedAt: number
+  /**
+   * 停止しても行は消さず、ここに時刻を入れる。
+   * 行を消してしまうと「停止した」という事実が他の端末に伝わらず、
+   * 止めたはずのタイマーが復活してしまうため。
+   */
+  deletedAt: number | null
+}
+
+/** 同期の進み具合。この端末だけのもので、同期の対象にはしない。 */
+export interface SyncState {
+  id: 'sync'
+  /** 前回どこまで取得したか（サーバー側の時刻） */
+  cursor: string | null
+  /** 前回どこまで送ったか（この端末の時刻） */
+  pushedAt: number
+  userId: string | null
+  email: string | null
+  lastSyncAt: number | null
+  lastError: string | null
 }
 
 /**

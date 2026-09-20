@@ -16,7 +16,7 @@ import {
 } from '../lib/time'
 
 export function TimerScreen() {
-  const { active, loading, running, elapsedMs, start, pause, resume, stop, discard, setTag } =
+  const { active, loading, running, isForeign, elapsedMs, start, takeOver, pause, resume, stop, discard, setTag } =
     useTimer()
   const tags = useTags()
   const [pendingTag, setPendingTag] = useState<string | null>(null)
@@ -24,6 +24,7 @@ export function TimerScreen() {
   const [adjustValue, setAdjustValue] = useState('')
   const [toast, setToast] = useState<string | null>(null)
   const [editing, setEditing] = useState<SessionTarget>(null)
+  const [takeOverOpen, setTakeOverOpen] = useState(false)
   const showSeconds = useShowSeconds()
 
   const settings = useLiveQuery(() => db.settings.get('settings'), [], undefined)
@@ -72,7 +73,13 @@ export function TimerScreen() {
         <Card className="overflow-hidden">
           <div className="px-5 pt-6 pb-5 text-center">
             <div className="text-[11px] font-semibold tracking-[0.16em] text-muted uppercase">
-              {active ? (running ? '計測中' : '一時停止中') : '待機中'}
+              {active
+                ? isForeign
+                  ? `${active.deviceName} で計測中`
+                  : running
+                    ? '計測中'
+                    : '一時停止中'
+                : '待機中'}
             </div>
 
             <div
@@ -115,6 +122,21 @@ export function TimerScreen() {
                   開始
                 </Button>
               </>
+            ) : isForeign ? (
+              // 他の端末の計測。止めるのは安全なのでそのまま押せるが、
+              // 始め直すと相手の計測が終わるので確認を挟む。
+              <div className="flex gap-2.5">
+                <Button className="flex-1 py-3.5" onClick={() => setTakeOverOpen(true)}>
+                  この端末で始める
+                </Button>
+                <Button
+                  className="flex-1 py-3.5"
+                  variant="primary"
+                  onClick={() => (isLong ? openAdjust() : handleStop())}
+                >
+                  終了して記録
+                </Button>
+              </div>
             ) : (
               <div className="flex gap-2.5">
                 <Button
@@ -135,7 +157,7 @@ export function TimerScreen() {
             )}
           </div>
 
-          {active && (
+          {active && !isForeign && (
             <div className="border-t border-rulesoft px-5 py-3">
               <div className="mb-2 text-[11px] font-semibold tracking-wider text-muted">タグ</div>
               <TagPicker value={active.tagId} onChange={(id) => setTag(id)} scope="time" />
@@ -213,6 +235,34 @@ export function TimerScreen() {
           )}
         </div>
       </div>
+
+      {/* 他の端末の計測を引き取る確認 */}
+      <Modal
+        open={takeOverOpen}
+        onClose={() => setTakeOverOpen(false)}
+        title="この端末で始めますか？"
+      >
+        <p className="text-[13px] leading-relaxed text-muted">
+          {active?.deviceName} で計測中のタイマーを終了して記録に残し、この端末で新しく始めます。
+          これまでの計測が消えることはありません。
+        </p>
+        <div className="mt-5 flex gap-2.5">
+          <Button className="flex-1" onClick={() => setTakeOverOpen(false)}>
+            やめる
+          </Button>
+          <Button
+            className="flex-1"
+            variant="primary"
+            onClick={async () => {
+              setTakeOverOpen(false)
+              await takeOver(pendingTag)
+              showToast('この端末で計測を始めました')
+            }}
+          >
+            始める
+          </Button>
+        </div>
+      </Modal>
 
       <SessionEditModal target={editing} onClose={() => setEditing(null)} />
 

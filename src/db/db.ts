@@ -6,6 +6,7 @@ import type {
   Recurring,
   Session,
   Settings,
+  SyncState,
   Tag,
   Transaction,
 } from './types'
@@ -18,9 +19,13 @@ export class LifeLogDB extends Dexie {
   recurring!: Table<Recurring, string>
   settings!: Table<Settings, string>
   activeTimer!: Table<ActiveTimer, string>
+  syncState!: Table<SyncState, string>
+  /** サーバーに入っていると分かっている版。同期の対象にはしない。 */
+  pushed!: Table<{ key: string; updatedAt: number }, string>
 
-  constructor() {
-    super('lifelog')
+  /** name を変えると別のデータベースになる。2台の端末を模したテストで使う。 */
+  constructor(name = 'lifelog') {
+    super(name)
 
     // version(1) — 時間の記録まで
     this.version(1).stores({
@@ -59,6 +64,27 @@ export class LifeLogDB extends Dexie {
           if (!g.scope) g.scope = 'both'
         }),
     )
+
+    // version(5) — 同期の準備。
+    //
+    // 計測中のタイマーを他の端末にも見せるため、activeTimer を
+    // 「行を消す」方式から「deletedAt に時刻を入れる」方式に変える。
+    // 行を消すと「止めた」という事実が他の端末に伝わらず、
+    // 止めたはずのタイマーが復活してしまう。
+    this.version(5)
+      .stores({ syncState: 'id', pushed: 'key' })
+      .upgrade(async (tx) => {
+        const now = Date.now()
+        await tx
+          .table('activeTimer')
+          .toCollection()
+          .modify((t) => {
+            if (t.deletedAt === undefined) t.deletedAt = null
+            if (!t.createdAt) t.createdAt = t.updatedAt ?? now
+            if (!t.deviceId) t.deviceId = 'legacy'
+            if (!t.deviceName) t.deviceName = 'この端末'
+          })
+      })
   }
 }
 
