@@ -165,7 +165,8 @@ begin
   -- タグを指定した場合はそちらが優先される
   perform public.watch_toggle('ABCDEFGH23456789ABCDEFGH23456789'); -- いったん止める
   s := public.watch_toggle('ABCDEFGH23456789ABCDEFGH23456789', ' えいご ');
-  perform t_check('知らないタグ名ならタグなしで始まる', s = 'タグなし で開始しました', s);
+  perform t_check('知らないタグ名ならタグなしで始まり、そう伝える',
+    s like 'タグなし で開始しました（タグ「えいご」が見つからない%', s);
   perform public.watch_toggle('ABCDEFGH23456789ABCDEFGH23456789');
 
   s := public.watch_toggle('ABCDEFGH23456789ABCDEFGH23456789', ' 英語 ');
@@ -211,6 +212,7 @@ begin
   perform t_check('アプリと同じ項目がそろっている',
     tx.data ?& array['amount','type','tagId','name','occurredAt','recurringId','createdAt'],
     (select string_agg(kk, ',') from jsonb_object_keys(tx.data) kk));
+  perform t_check('Watch から入れた印が付く', tx.data ->> 'source' = 'watch', tx.data ->> 'source');
 
   s := public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', 1200.6, null, ' 昼食 ');
   select * into tx from public.records
@@ -220,6 +222,68 @@ begin
     tx.data ->> 'amount');
   perform t_check('名前を渡せる', tx.data ->> 'name' = '昼食', tx.data ->> 'name');
   perform t_check('タグ無しでも記録できる', tx.data ->> 'tagId' is null);
+end $$;
+
+\echo ''
+\echo '【8-2】二度押ししても二重に登録されないか'
+do $$
+declare s text; before bigint; after bigint;
+begin
+  select count(*) into before from public.records where kind = 'transactions' and deleted_at is null;
+  perform public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', 450, '食費');
+  s := public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', 450, '食費');
+  select count(*) into after from public.records where kind = 'transactions' and deleted_at is null;
+  perform t_check('二度目は登録済みと返る', s like '%二重登録を防ぎました%', s);
+  perform t_check('記録は1件しか増えない', after - before = 1, (after - before)::text || '件増えた');
+
+  -- 金額が違えば別の買い物なので、ちゃんと両方入る
+  perform public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', 451, '食費');
+  select count(*) into after from public.records where kind = 'transactions' and deleted_at is null;
+  perform t_check('金額が違えば別の記録として入る', after - before = 2, (after - before)::text || '件増えた');
+end $$;
+
+\echo ''
+\echo '【8-3】Watch から取り消せるか'
+do $$
+declare s text; tid text; alive bigint;
+begin
+  select w.last_tx_id into tid from public.watch_keys w
+   where w.key = 'ABCDEFGH23456789ABCDEFGH23456789';
+  perform t_check('直前の1件を覚えている', tid is not null);
+
+  s := public.watch_undo('ABCDEFGH23456789ABCDEFGH23456789');
+  perform t_check('取り消したと返る', s like '%451円 の記録を取り消しました', s);
+  perform t_check('その記録は削除済みになった',
+    (select deleted_at is not null from public.records where kind = 'transactions' and id = tid));
+
+  -- 二度押しても、さらに古い記録まで消えない
+  select count(*) into alive from public.records
+   where kind = 'transactions' and deleted_at is null
+     and user_id = '11111111-1111-4111-8111-111111111111';
+  s := public.watch_undo('ABCDEFGH23456789ABCDEFGH23456789');
+  perform t_check('二度目は何も消さない', s = '取り消せる記録がありません', s);
+  perform t_check('古い記録は残っている',
+    (select count(*) from public.records
+      where kind = 'transactions' and deleted_at is null
+        and user_id = '11111111-1111-4111-8111-111111111111') = alive);
+end $$;
+
+\echo ''
+\echo '【8-4】タグ名が違うとき、届いた文字と使える名前を返すか'
+do $$
+declare s text;
+begin
+  -- ショートカットの欄に変数が2つ入っていると、こういう文字が届く
+  s := public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', 300, '食費食費');
+  perform t_check('届いた文字をそのまま見せる', s like '%「食費食費」が見つからない%', s);
+  perform t_check('支出に使えるタグを添える', s like '%使えるタグ：食費、雑費%', s);
+  perform t_check('時間用のタグは混ぜない', s not like '%英語%', s);
+  perform t_check('記録自体は入る（タグなし）', s like 'タグなし 300円 を記録しました%', s);
+  perform public.watch_undo('ABCDEFGH23456789ABCDEFGH23456789');
+
+  s := public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', 301, '食費');
+  perform t_check('正しい名前なら余計な一言は付かない', s = '食費 301円 を記録しました', s);
+  perform public.watch_undo('ABCDEFGH23456789ABCDEFGH23456789');
 end $$;
 
 \echo ''
@@ -335,7 +399,7 @@ select case
          when count(*) filter (where not ok) > 0
            then '❌ ' || count(*) filter (where not ok)::text || '件 失敗: '
                 || string_agg(label, ' / ') filter (where not ok)
-         when count(*) < 40 then '❌ 検証が途中で止まっています（' || count(*)::text || '件しか走っていない）'
+         when count(*) < 60 then '❌ 検証が途中で止まっています（' || count(*)::text || '件しか走っていない）'
          else '✅ SQL ' || count(*)::text || '項目すべて通過'
        end as result
 from t_results;

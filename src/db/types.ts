@@ -68,6 +68,12 @@ export interface Transaction extends Base {
   occurredAt: number
   /** 固定費から自動で作られた支出なら、その固定費のID */
   recurringId: Id | null
+  /**
+   * どこから入れたか。Apple Watch のショートカット経由なら 'watch'。
+   * アプリから入れたものには付かない（付いていなくても正常）。
+   * 二度押しの検知と「直前の1件を取り消す」の目印に使っている。
+   */
+  source?: 'watch'
 }
 
 /**

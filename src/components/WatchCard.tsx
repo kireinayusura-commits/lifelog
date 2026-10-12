@@ -226,6 +226,11 @@ export function WatchCard() {
                   hint="押すたびに開始と停止が入れ替わります"
                 />
                 <CopyRow id="url-expense" label="URL（支出）" value={watchUrl('watch_expense')} />
+                <CopyRow
+                  id="url-undo"
+                  label="URL（直前の支出を取り消す）"
+                  value={watchUrl('watch_undo')}
+                />
                 <CopyRow id="url-tags" label="URL（タグ一覧）" value={watchUrl('watch_tags')} />
                 <CopyRow id="url-status" label="URL（状態の確認）" value={watchUrl('watch_status')} />
                 <CopyRow
@@ -238,7 +243,7 @@ export function WatchCard() {
                   id="body"
                   label="本文（タイマー・状態の確認）"
                   value={`{"k":"${key.key}"}`}
-                  hint="ショートカットでは「JSON」ではなくテキストで貼っても通ります"
+                  hint="ショートカットでは「本文を要求」を JSON にして、キー k のテキストに合鍵だけを入れます。余計なフィールドは足さないこと"
                 />
 
                 <div className="mt-4">

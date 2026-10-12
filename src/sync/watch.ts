@@ -85,7 +85,12 @@ export async function revokeWatchKeys(userId: string): Promise<void> {
 
 // ---------------------------------------------------------------- 呼び出し
 
-export type WatchAction = 'watch_status' | 'watch_toggle' | 'watch_expense' | 'watch_tags'
+export type WatchAction =
+  | 'watch_status'
+  | 'watch_toggle'
+  | 'watch_expense'
+  | 'watch_tags'
+  | 'watch_undo'
 
 /** ショートカットに貼り付けるURL。合鍵は本文に入れるので、ここには含めない。 */
 export function watchUrl(action: WatchAction): string {

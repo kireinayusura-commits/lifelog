@@ -32,6 +32,11 @@ create table if not exists public.watch_keys (
   last_used_at timestamptz
 );
 
+-- Watch から最後に入れた支出のID。
+-- 二重登録の防止と「取り消し」に使う。既に表がある場合は足すだけ。
+alter table public.watch_keys add column if not exists last_tx_id text;
+alter table public.watch_keys add column if not exists last_tx_at bigint;
+
 create index if not exists watch_keys_user_idx on public.watch_keys (user_id);
 
 alter table public.watch_keys enable row level security;
@@ -181,6 +186,37 @@ $$;
 
 revoke all on function public.watch_tag_name(uuid, text) from public;
 
+-- 送られたタグ名が見つからなかったときの一言。
+-- 黙ってタグなしにすると、ショートカットの設定違い（変数が2つ入っている等）に
+-- 気づけない。届いた文字をそのまま「」で見せ、使える名前も添える。
+create or replace function public.watch_tag_miss(p_user uuid, p_tag text, p_purpose text)
+returns text
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select '（タグ「' || btrim(p_tag) || '」が見つからないので、タグなしにしました。'
+      || '使えるタグ：' || coalesce(string_agg(s.nm, '、' order by s.ord, s.nm), 'なし') || '）'
+  from (
+    select r.data ->> 'name' as nm,
+           coalesce((r.data ->> 'order')::numeric, 0) as ord
+    from public.records r
+    left join public.records g
+      on g.user_id = r.user_id and g.kind = 'groups'
+     and g.id = r.data ->> 'groupId' and g.deleted_at is null
+    where r.user_id = p_user
+      and r.kind = 'tags'
+      and r.deleted_at is null
+      and coalesce((r.data ->> 'archived')::boolean, false) = false
+      and (g.id is null or coalesce(g.data ->> 'scope', 'both') in ('both', p_purpose))
+    order by ord, nm
+    limit 8
+  ) s
+$$;
+
+revoke all on function public.watch_tag_miss(uuid, text, text) from public;
+
 -- ------------------------------------------------------------
 --  3. ショートカットから呼ぶ関数
 --
@@ -314,6 +350,7 @@ declare
   dur bigint;
   tagid text;
   nm text;
+  note text := '';
 begin
   u := public.watch_user(k);
   n := public.watch_now_ms();
@@ -367,6 +404,9 @@ begin
   -- ---------------- 止まっている → 始める ----------------
   if tag is not null and btrim(tag) <> '' then
     tagid := public.watch_tag_id(u, tag);
+    if tagid is null then
+      note := public.watch_tag_miss(u, tag, 'time');
+    end if;
   else
     -- 直前の記録と同じタグを引き継ぐ
     select r.data ->> 'tagId' into tagid
@@ -398,7 +438,7 @@ begin
   );
 
   nm := coalesce(public.watch_tag_name(u, tagid), 'タグなし');
-  return nm || ' で開始しました';
+  return nm || ' で開始しました' || note;
 end;
 $$;
 
@@ -427,8 +467,15 @@ declare
   tagid text;
   nm text;
   label text;
+  norm text;
+  prev_id text;
+  prev_at bigint;
+  prev jsonb;
+  new_id text;
+  note text := '';
 begin
   u := public.watch_user(k);
+  norm := upper(btrim(coalesce(k, '')));
 
   if amount is null or amount <= 0 then
     raise exception '金額を正しく入力してください' using errcode = '22023';
@@ -442,14 +489,41 @@ begin
 
   if tag is not null and btrim(tag) <> '' then
     tagid := public.watch_tag_id(u, tag);
+    if tagid is null then
+      note := public.watch_tag_miss(u, tag, 'money');
+    end if;
   end if;
 
   label := coalesce(nullif(btrim(name), ''), 'Watchから記録');
 
+  -- ---- 二重登録よけ ----
+  -- Watch のボタンは押した手応えが無いので、つい二度押しになる。
+  -- 通信のやり直しでも同じ内容が二度届くことがある。
+  -- 直前に入れたものと金額もタグも同じで、10秒以内なら、同じ操作とみなす。
+  select w.last_tx_id, w.last_tx_at into prev_id, prev_at
+  from public.watch_keys w where w.key = norm;
+
+  if prev_id is not null and prev_at is not null and n - prev_at < 10000 then
+    select r.data into prev
+    from public.records r
+    where r.user_id = u and r.kind = 'transactions' and r.id = prev_id
+      and r.deleted_at is null;
+
+    if prev is not null
+       and (prev ->> 'amount')::numeric = amt
+       and coalesce(prev ->> 'tagId', '') = coalesce(tagid, '')
+    then
+      nm := coalesce(public.watch_tag_name(u, tagid), 'タグなし');
+      return nm || ' ' || amt::text || '円 は登録済みです（二重登録を防ぎました）';
+    end if;
+  end if;
+
+  new_id := gen_random_uuid()::text;
+
   perform public.watch_put(
     u,
     'transactions',
-    gen_random_uuid()::text,
+    new_id,
     jsonb_build_object(
       'amount', amt,
       'type', 'expense',
@@ -457,19 +531,80 @@ begin
       'name', label,
       'occurredAt', n,
       'recurringId', null,
+      -- どこから入れたかの印。二重登録よけと取り消しの目印にもなる。
+      'source', 'watch',
       'createdAt', n
     ),
     n,
     null
   );
 
+  update public.watch_keys
+     set last_tx_id = new_id, last_tx_at = n
+   where key = norm;
+
   nm := coalesce(public.watch_tag_name(u, tagid), 'タグなし');
-  return nm || ' ' || amt::text || '円 を記録しました';
+  return nm || ' ' || amt::text || '円 を記録しました' || note;
 end;
 $$;
 
 revoke all on function public.watch_expense(text, numeric, text, text) from public;
 grant execute on function public.watch_expense(text, numeric, text, text) to anon, authenticated;
+
+-- Watch から入れた直前の支出を取り消す。
+--
+-- 小さな画面で金額を打つと、桁を間違えたことにその場で気づく。
+-- iPhone を出すまで直せないのでは、結局 iPhone を出すことになる。
+-- 取り消せるのは「自分が Watch から入れた最後の1件」だけで、
+-- 二度押しても二重には消えない。
+create or replace function public.watch_undo(k text)
+returns text
+language plpgsql
+volatile
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  u uuid;
+  norm text;
+  tid text;
+  d jsonb;
+  n bigint;
+  nm text;
+begin
+  u := public.watch_user(k);
+  norm := upper(btrim(coalesce(k, '')));
+
+  select w.last_tx_id into tid from public.watch_keys w where w.key = norm;
+  if tid is null then
+    return '取り消せる記録がありません';
+  end if;
+
+  select r.data into d
+  from public.records r
+  where r.user_id = u and r.kind = 'transactions' and r.id = tid
+    and r.deleted_at is null;
+
+  -- すでに iPhone 側で消されている場合もここに来る
+  if d is null then
+    update public.watch_keys set last_tx_id = null, last_tx_at = null where key = norm;
+    return '取り消せる記録がありません';
+  end if;
+
+  n := public.watch_now_ms();
+
+  -- 行は消さず「削除した」と記す。消すと他の端末に伝わらない。
+  perform public.watch_put(u, 'transactions', tid, d, n, n);
+
+  update public.watch_keys set last_tx_id = null, last_tx_at = null where key = norm;
+
+  nm := coalesce(public.watch_tag_name(u, d ->> 'tagId'), 'タグなし');
+  return nm || ' ' || (d ->> 'amount') || '円 の記録を取り消しました';
+end;
+$$;
+
+revoke all on function public.watch_undo(text) from public;
+grant execute on function public.watch_undo(text) to anon, authenticated;
 
 -- ------------------------------------------------------------
 --  4. API の定義を読み直させる
