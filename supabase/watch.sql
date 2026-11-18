@@ -448,9 +448,16 @@ grant execute on function public.watch_toggle(text, text) to anon, authenticated
 -- 支出を1件記録する。
 -- tag はタグ名（watch_tags で取った一覧から選んだもの）。
 -- name を省くと「Watchから記録」という名前が入る。あとで iPhone から直せる。
+--
+-- amount を text で受けるのは、ショートカット側の都合。
+-- 「本文を要求」のフィールドは テキスト でも 数字 でも作れてしまい、
+-- 型が食い違うと何も言わずに null が飛んでくる。どちらで作っても通るようにし、
+-- 読めないときは「何が届いたか」を本人に返す。
+drop function if exists public.watch_expense(text, numeric, text, text);
+
 create or replace function public.watch_expense(
   k text,
-  amount numeric,
+  amount text default null,
   tag text default null,
   name text default null
 )
@@ -464,6 +471,9 @@ declare
   u uuid;
   n bigint;
   amt bigint;
+  num numeric;
+  raw text;
+  cleaned text;
   tagid text;
   nm text;
   label text;
@@ -477,15 +487,35 @@ begin
   u := public.watch_user(k);
   norm := upper(btrim(coalesce(k, '')));
 
-  if amount is null or amount <= 0 then
-    raise exception '金額を正しく入力してください' using errcode = '22023';
+  -- ---- 金額を読み取る ----
+  raw := btrim(coalesce(amount, ''));
+
+  -- 全角で入力・音読されることがあるので半角に寄せる
+  cleaned := translate(raw, '０１２３４５６７８９．　￥', '0123456789. ¥');
+  -- 「¥1,200円」のような飾りを落とす
+  cleaned := regexp_replace(cleaned, '[¥,、[:space:]]|円', '', 'g');
+
+  if cleaned = '' then
+    raise exception
+      '金額が空のまま届きました。ショートカットの amount の欄に「指定入力」が入っているか確かめてください'
+      using errcode = '22023';
   end if;
-  if amount >= 100000000 then
-    raise exception '金額が大きすぎます' using errcode = '22023';
+
+  if cleaned !~ '^[0-9]+(\.[0-9]+)?$' then
+    raise exception '金額として読めません（届いた値：「%」）', raw using errcode = '22023';
+  end if;
+
+  num := cleaned::numeric;
+
+  if num <= 0 then
+    raise exception '金額は1円以上にしてください（届いた値：「%」）', raw using errcode = '22023';
+  end if;
+  if num >= 100000000 then
+    raise exception '金額が大きすぎます（届いた値：「%」）', raw using errcode = '22023';
   end if;
 
   n := public.watch_now_ms();
-  amt := round(amount);
+  amt := round(num);
 
   if tag is not null and btrim(tag) <> '' then
     tagid := public.watch_tag_id(u, tag);
@@ -548,8 +578,8 @@ begin
 end;
 $$;
 
-revoke all on function public.watch_expense(text, numeric, text, text) from public;
-grant execute on function public.watch_expense(text, numeric, text, text) to anon, authenticated;
+revoke all on function public.watch_expense(text, text, text, text) from public;
+grant execute on function public.watch_expense(text, text, text, text) to anon, authenticated;
 
 -- Watch から入れた直前の支出を取り消す。
 --

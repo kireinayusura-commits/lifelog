@@ -360,6 +360,55 @@ async function main() {
   const echoed = await A.tags.get('tag-echo')
   check('その変更はちゃんと届く', echoed?.name === 'Bが直した', echoed?.name)
 
+  console.log('\n【13】予定（部品・ブロック・型）が端末をまたいで届くか')
+  const tPart = tick()
+  await A.parts.add({
+    ...base('part-1', tPart),
+    name: '講義1コマ',
+    durationMin: 150,
+    tagId: null,
+    kind: 'study',
+    order: 0,
+    lastDurationMin: null,
+  })
+  await A.blocks.add({
+    ...base('blk-1', tick()),
+    date: '2026-11-18',
+    startMin: 9 * 60,
+    durationMin: 90,
+    title: '英語長文',
+    tagId: null,
+    kind: 'study',
+    partId: null,
+  })
+  await A.days.add({ ...base('2026-11-18', tick()), startMin: 11 * 60, endMin: 25 * 60 })
+  await syncOnce(t, A)
+  await syncOnce(t, B)
+
+  const partOnB = await B.parts.get('part-1')
+  const blkOnB = await B.blocks.where('date').equals('2026-11-18').toArray()
+  const dayOnB = await B.days.get('2026-11-18')
+  check('部品が届いた', partOnB?.durationMin === 150, String(partOnB?.durationMin))
+  check('予定が届いた', blkOnB.length === 1 && blkOnB[0].title === '英語長文', blkOnB[0]?.title)
+  check('日付で引ける状態で届く', blkOnB[0]?.startMin === 540, String(blkOnB[0]?.startMin))
+  check('その日だけの枠も届いた', dayOnB?.endMin === 1500, String(dayOnB?.endMin))
+
+  // 片方で予定を消したら、もう片方でも消える
+  const tDelBlk = tick()
+  await B.blocks.update('blk-1', { deletedAt: tDelBlk, updatedAt: tDelBlk })
+  await syncOnce(t, B)
+  await syncOnce(t, A)
+  const goneOnA = await A.blocks.get('blk-1')
+  check('消した予定は相手でも消える', goneOnA?.deletedAt === tDelBlk, String(goneOnA?.deletedAt))
+
+  const beforePlan = server.writes
+  for (let i = 0; i < 3; i++) {
+    await syncOnce(t, A)
+    await syncOnce(t, B)
+  }
+  check('予定でも往復が止まる', server.writes - beforePlan === 0,
+    `${server.writes - beforePlan}件の余計な送信`)
+
   console.log('\n' + (failures === 0 ? '✅ すべて通過' : `❌ ${failures}件 失敗`))
   process.exit(failures === 0 ? 0 : 1)
 }

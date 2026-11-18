@@ -129,6 +129,22 @@ export function Modal({
   )
 }
 
+/**
+ * 入力欄がひとつではない塊につける見出し。
+ *
+ * Field は <label> で中身を包むので、ボタンが複数入ると
+ * **そのすべてが見出しの文字まで自分の名前として読み上げられる。**
+ * 種類の選択やタグの選択のように、押すものが並ぶ場合はこちらを使う。
+ */
+export function FieldGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div role="group" aria-label={label}>
+      <span className="mb-1.5 block text-[12px] font-semibold text-muted">{label}</span>
+      {children}
+    </div>
+  )
+}
+
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">

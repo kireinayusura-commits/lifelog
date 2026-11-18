@@ -197,7 +197,7 @@ end $$;
 do $$
 declare s text; tx record;
 begin
-  s := public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', 680, '食費');
+  s := public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', '680', '食費');
   perform t_check('記録したと返る', s = '食費 680円 を記録しました', s);
 
   select * into tx from public.records
@@ -214,7 +214,7 @@ begin
     (select string_agg(kk, ',') from jsonb_object_keys(tx.data) kk));
   perform t_check('Watch から入れた印が付く', tx.data ->> 'source' = 'watch', tx.data ->> 'source');
 
-  s := public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', 1200.6, null, ' 昼食 ');
+  s := public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', '1200.6', null, ' 昼食 ');
   select * into tx from public.records
    where kind = 'transactions' and user_id = '11111111-1111-4111-8111-111111111111'
    order by updated_at desc limit 1;
@@ -230,14 +230,14 @@ do $$
 declare s text; before bigint; after bigint;
 begin
   select count(*) into before from public.records where kind = 'transactions' and deleted_at is null;
-  perform public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', 450, '食費');
-  s := public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', 450, '食費');
+  perform public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', '450', '食費');
+  s := public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', '450', '食費');
   select count(*) into after from public.records where kind = 'transactions' and deleted_at is null;
   perform t_check('二度目は登録済みと返る', s like '%二重登録を防ぎました%', s);
   perform t_check('記録は1件しか増えない', after - before = 1, (after - before)::text || '件増えた');
 
   -- 金額が違えば別の買い物なので、ちゃんと両方入る
-  perform public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', 451, '食費');
+  perform public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', '451', '食費');
   select count(*) into after from public.records where kind = 'transactions' and deleted_at is null;
   perform t_check('金額が違えば別の記録として入る', after - before = 2, (after - before)::text || '件増えた');
 end $$;
@@ -274,40 +274,82 @@ do $$
 declare s text;
 begin
   -- ショートカットの欄に変数が2つ入っていると、こういう文字が届く
-  s := public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', 300, '食費食費');
+  s := public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', '300', '食費食費');
   perform t_check('届いた文字をそのまま見せる', s like '%「食費食費」が見つからない%', s);
   perform t_check('支出に使えるタグを添える', s like '%使えるタグ：食費、雑費%', s);
   perform t_check('時間用のタグは混ぜない', s not like '%英語%', s);
   perform t_check('記録自体は入る（タグなし）', s like 'タグなし 300円 を記録しました%', s);
   perform public.watch_undo('ABCDEFGH23456789ABCDEFGH23456789');
 
-  s := public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', 301, '食費');
+  s := public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', '301', '食費');
   perform t_check('正しい名前なら余計な一言は付かない', s = '食費 301円 を記録しました', s);
   perform public.watch_undo('ABCDEFGH23456789ABCDEFGH23456789');
 end $$;
 
 \echo ''
-\echo '【9】おかしな金額は断るか'
+\echo '【9】おかしな金額のとき、何が届いたか分かるか'
 do $$
 begin
+  -- ショートカットの欄が空のまま（今回つまずいた状態）
   begin
-    perform public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', 0, null);
+    perform public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', null, '食費');
+    perform t_check('空の金額は断る', false, '通ってしまった');
+  exception when others then
+    perform t_check('空のときは欄の直し方まで伝える',
+      SQLERRM like '金額が空のまま届きました%amount の欄に「指定入力」%', SQLERRM);
+  end;
+  begin
+    perform public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', '   ', '食費');
+    perform t_check('空白だけも同じ扱い', false, '通ってしまった');
+  exception when others then
+    perform t_check('空白だけも同じ扱い', SQLERRM like '金額が空のまま届きました%', SQLERRM);
+  end;
+
+  begin
+    perform public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', '指定入力', null);
+    perform t_check('数字でないときは届いた値を見せる',
+      false, '通ってしまった');
+  exception when others then
+    perform t_check('数字でないときは届いた値を見せる',
+      SQLERRM = '金額として読めません（届いた値：「指定入力」）', SQLERRM);
+  end;
+
+  begin
+    perform public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', '0', null);
     perform t_check('0円は断る', false, '通ってしまった');
   exception when others then
-    perform t_check('0円は断る', SQLERRM = '金額を正しく入力してください', SQLERRM);
+    perform t_check('0円は断る', SQLERRM like '金額は1円以上%「0」%', SQLERRM);
   end;
   begin
-    perform public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', -500, null);
+    perform public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', '-500', null);
     perform t_check('マイナスは断る', false, '通ってしまった');
   exception when others then
-    perform t_check('マイナスは断る', SQLERRM = '金額を正しく入力してください', SQLERRM);
+    perform t_check('マイナスは断る', SQLERRM like '金額として読めません%', SQLERRM);
   end;
   begin
-    perform public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', 999999999, null);
+    perform public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', '999999999', null);
     perform t_check('桁を間違えたら断る', false, '通ってしまった');
   exception when others then
-    perform t_check('桁を間違えたら断る', SQLERRM = '金額が大きすぎます', SQLERRM);
+    perform t_check('桁を間違えたら断る', SQLERRM like '金額が大きすぎます%', SQLERRM);
   end;
+end $$;
+
+\echo ''
+\echo '【9-2】書き方が多少ちがっても受け取れるか'
+do $$
+declare s text;
+begin
+  s := public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', '１２３０', '食費');
+  perform t_check('全角の数字', s like '食費 1230円 を記録しました%', s);
+  perform public.watch_undo('ABCDEFGH23456789ABCDEFGH23456789');
+
+  s := public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', '¥1,480', '食費');
+  perform t_check('記号つき（¥1,480）', s like '食費 1480円 を記録しました%', s);
+  perform public.watch_undo('ABCDEFGH23456789ABCDEFGH23456789');
+
+  s := public.watch_expense('ABCDEFGH23456789ABCDEFGH23456789', ' 980円 ', '食費');
+  perform t_check('「円」つき', s like '食費 980円 を記録しました%', s);
+  perform public.watch_undo('ABCDEFGH23456789ABCDEFGH23456789');
 end $$;
 
 \echo ''
@@ -318,7 +360,7 @@ begin
   -- 別の利用者の合鍵で操作しても、自分の記録は一切動かない
   select count(*) into mine from public.records
    where user_id = '11111111-1111-4111-8111-111111111111';
-  perform public.watch_expense('ZZZZZZZZ23456789ZZZZZZZZ23456789', 999, null);
+  perform public.watch_expense('ZZZZZZZZ23456789ZZZZZZZZ23456789', '999', null);
   select count(*) into theirs from public.records
    where user_id = '11111111-1111-4111-8111-111111111111';
   perform t_check('他人の合鍵では自分の記録は増えない', mine = theirs);
@@ -399,7 +441,7 @@ select case
          when count(*) filter (where not ok) > 0
            then '❌ ' || count(*) filter (where not ok)::text || '件 失敗: '
                 || string_agg(label, ' / ') filter (where not ok)
-         when count(*) < 60 then '❌ 検証が途中で止まっています（' || count(*)::text || '件しか走っていない）'
+         when count(*) < 68 then '❌ 検証が途中で止まっています（' || count(*)::text || '件しか走っていない）'
          else '✅ SQL ' || count(*)::text || '項目すべて通過'
        end as result
 from t_results;

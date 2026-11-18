@@ -2,8 +2,9 @@ import { useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, saveSettings } from '../db/db'
 import { downloadBackup, readBackupFile } from '../db/backup'
-import { Button, Card, Field, Screen, inputClass } from '../components/ui'
+import { Button, Card, Field, FieldGroup, Screen, inputClass } from '../components/ui'
 import { AccountCard } from '../components/AccountCard'
+import { formatMin, parseMin } from '../schedule/logic'
 import { WatchCard } from '../components/WatchCard'
 
 export function SettingsScreen() {
@@ -108,6 +109,84 @@ export function SettingsScreen() {
               </span>
             </span>
           </label>
+        </Card>
+      </section>
+
+      <section className="mt-6">
+        <h2 className="mb-2 px-1 text-[13px] font-bold">予定</h2>
+        <Card className="px-4 py-4">
+          <FieldGroup label="いつもの一日の枠">
+            <div className="flex items-center gap-2">
+              <input
+                id="day-start"
+                type="text"
+                inputMode="numeric"
+                defaultValue={formatMin(settings?.dayStartMin ?? 8 * 60)}
+                onBlur={(e) => {
+                  const v = parseMin(e.target.value)
+                  if (v === null) {
+                    e.target.value = formatMin(settings?.dayStartMin ?? 8 * 60)
+                    return
+                  }
+                  saveSettings({ dayStartMin: v })
+                }}
+                className={`${inputClass} w-24`}
+              />
+              <span className="text-[13px] text-muted">〜</span>
+              <input
+                id="day-end"
+                type="text"
+                inputMode="numeric"
+                defaultValue={formatMin(settings?.dayEndMin ?? 24 * 60)}
+                onBlur={(e) => {
+                  const v = parseMin(e.target.value)
+                  if (v === null || v <= (settings?.dayStartMin ?? 0)) {
+                    e.target.value = formatMin(settings?.dayEndMin ?? 24 * 60)
+                    return
+                  }
+                  saveSettings({ dayEndMin: v })
+                }}
+                className={`${inputClass} w-24`}
+              />
+            </div>
+          </FieldGroup>
+          <p className="mt-2 text-[12px] leading-relaxed text-muted">
+            起きてから寝るまでの既定の範囲です。ここから「使える時間」を出します。
+            遅く起きた日は、予定画面でその日だけ変えられます。深夜は「翌1:30」と入れてください。
+          </p>
+
+          <div className="mt-4 border-t border-rulesoft pt-4">
+            <Field label="1日の目標勉強時間">
+              <div className="flex items-center gap-2">
+                <input
+                  id="daily-goal"
+                  type="number"
+                  min={0}
+                  max={16}
+                  step={0.5}
+                  defaultValue={
+                    settings?.dailyGoalMin != null ? settings.dailyGoalMin / 60 : ''
+                  }
+                  onBlur={(e) => {
+                    const t = e.target.value.trim()
+                    if (t === '') {
+                      saveSettings({ dailyGoalMin: null })
+                      return
+                    }
+                    const h = Number(t)
+                    if (!Number.isFinite(h) || h <= 0 || h > 16) return
+                    saveSettings({ dailyGoalMin: Math.round(h * 60) })
+                  }}
+                  className={`${inputClass} w-24`}
+                  placeholder="未設定"
+                />
+                <span className="text-[13px] text-muted">時間</span>
+              </div>
+            </Field>
+            <p className="mt-2 text-[12px] leading-relaxed text-muted">
+              予定画面に「目標まであと何時間」と出ます。空にすると出しません。
+            </p>
+          </div>
         </Card>
       </section>
 

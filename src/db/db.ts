@@ -2,12 +2,17 @@ import Dexie, { type Table } from 'dexie'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type {
   ActiveTimer,
+  Block,
+  Day,
   Group,
+  Part,
   Recurring,
   Session,
   Settings,
   SyncState,
   Tag,
+  Template,
+  TemplateBlock,
   Transaction,
 } from './types'
 
@@ -19,6 +24,11 @@ export class LifeLogDB extends Dexie {
   recurring!: Table<Recurring, string>
   settings!: Table<Settings, string>
   activeTimer!: Table<ActiveTimer, string>
+  parts!: Table<Part, string>
+  blocks!: Table<Block, string>
+  templates!: Table<Template, string>
+  templateBlocks!: Table<TemplateBlock, string>
+  days!: Table<Day, string>
   syncState!: Table<SyncState, string>
   /** サーバーに入っていると分かっている版。同期の対象にはしない。 */
   pushed!: Table<{ key: string; updatedAt: number }, string>
@@ -85,6 +95,32 @@ export class LifeLogDB extends Dexie {
             if (!t.deviceName) t.deviceName = 'この端末'
           })
       })
+
+    // version(6) — 予定。
+    //
+    // 一日の帯に置く「ブロック」と、その元になる「部品」、
+    // 並びをまるごと保存する「型」を足す。
+    // blocks は日付で引くので date に索引を張る。
+    this.version(6)
+      .stores({
+        parts: 'id, kind, order, updatedAt, deletedAt',
+        blocks: 'id, date, startMin, updatedAt, deletedAt',
+        templates: 'id, order, updatedAt, deletedAt',
+        templateBlocks: 'id, templateId, startMin, updatedAt, deletedAt',
+        days: 'id, updatedAt, deletedAt',
+      })
+      .upgrade(async (tx) => {
+        // 既存の設定に、一日の枠と目標を入れる。
+        // 既定は本人の生活に合わせて 8:00〜翌0:00。あとから変えられる。
+        await tx
+          .table('settings')
+          .toCollection()
+          .modify((s) => {
+            if (s.dayStartMin === undefined) s.dayStartMin = 8 * 60
+            if (s.dayEndMin === undefined) s.dayEndMin = 24 * 60
+            if (s.dailyGoalMin === undefined) s.dailyGoalMin = null
+          })
+      })
   }
 }
 
@@ -97,6 +133,9 @@ export const DEFAULT_SETTINGS: Settings = {
   lastBackupAt: null,
   longRunWarnHours: 8,
   showSeconds: true,
+  dayStartMin: 8 * 60,
+  dayEndMin: 24 * 60,
+  dailyGoalMin: null,
   updatedAt: 0,
 }
 

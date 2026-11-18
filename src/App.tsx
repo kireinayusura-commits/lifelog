@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { materializeRecurring, seedIfEmpty } from './db/repo'
 import { TimerScreen } from './screens/TimerScreen'
+import { ScheduleScreen } from './screens/ScheduleScreen'
 import { ExpenseScreen } from './screens/ExpenseScreen'
 import { RecordsScreen } from './screens/RecordsScreen'
 import { TagsScreen } from './screens/TagsScreen'
@@ -9,7 +10,7 @@ import { useTimer } from './timer/useTimer'
 import { initSync } from './sync/manager'
 import { formatClock } from './lib/time'
 
-type TabId = 'timer' | 'expense' | 'records' | 'tags' | 'settings'
+type TabId = 'timer' | 'schedule' | 'expense' | 'records' | 'tags' | 'settings'
 
 function Icon({ id, active }: { id: TabId; active: boolean }) {
   return (
@@ -35,6 +36,13 @@ function Icon({ id, active }: { id: TabId; active: boolean }) {
           <path d="M9.6 12.3h4.8M12 10v5.2M10.2 10.1 12 12m1.8-1.9L12 12" />
         </>
       )}
+      {id === 'schedule' && (
+        <>
+          <rect x="3.5" y="5" width="17" height="15.5" rx="2.2" />
+          <path d="M3.5 9.5h17M8 3.2v3.4M16 3.2v3.4" />
+          <path d="M7.4 13h4.2M7.4 16.6h7.2" />
+        </>
+      )}
       {id === 'records' && <path d="M5 4h14v16H5zM8.5 9h7M8.5 13h7M8.5 17h4" />}
       {id === 'tags' && (
         <>
@@ -49,6 +57,7 @@ function Icon({ id, active }: { id: TabId; active: boolean }) {
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'timer', label: 'タイマー' },
+  { id: 'schedule', label: '予定' },
   { id: 'expense', label: '支出' },
   { id: 'records', label: '記録' },
   { id: 'tags', label: 'タグ' },
@@ -74,6 +83,7 @@ export default function App() {
       {/* スクロールするのはここだけ */}
       <main className="mx-auto w-full max-w-lg flex-1 overflow-y-auto overscroll-contain">
         {tab === 'timer' && <TimerScreen />}
+        {tab === 'schedule' && <ScheduleScreen />}
         {tab === 'expense' && <ExpenseScreen />}
         {tab === 'records' && <RecordsScreen />}
         {tab === 'tags' && <TagsScreen />}

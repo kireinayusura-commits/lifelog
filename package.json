@@ -6,7 +6,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",
-    "test": "tsx test/sync.test.ts && tsx test/watch.test.ts",
+    "test": "tsx test/sync.test.ts && tsx test/watch.test.ts && tsx test/schedule.test.ts",
     "test:sql": "bash test/pg/run.sh"
   },
   "devDependencies": {

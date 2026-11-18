@@ -103,7 +103,90 @@ export interface Settings {
   longRunWarnHours: number
   /** 記録の表示を秒まで出すか。計測自体は常に秒単位で行われる。 */
   showSeconds: boolean
+  /** 一日の枠の既定値（0:00からの分）。その日だけ days で上書きできる。 */
+  dayStartMin: number
+  /** 既定の終わり。24時を超える値を許す（翌1:30 なら 1530）。 */
+  dayEndMin: number
+  /** 1日の目標勉強時間（分）。未設定なら目標との差を出さない。 */
+  dailyGoalMin: number | null
   updatedAt: number
+}
+
+// ---------------------------------------------------------------- 予定
+
+/**
+ * 予定の種類。
+ * 生活と予定を分けているのは、色を変えるためではなく
+ * 「動かせないもの」として一目で区別したいため。
+ */
+export type BlockKind = 'study' | 'life' | 'event'
+
+export const BLOCK_KIND_LABEL: Record<BlockKind, string> = {
+  study: '勉強',
+  life: '生活',
+  event: '予定',
+}
+
+/**
+ * 部品箱に入っている部品。
+ *
+ * durationMin が数値なら「固定長」（講義1コマ150分・昼食40分）。
+ * null なら「可変長」で、置くときに長さを聞く（英語長文・過去問）。
+ * 1つの表で両方を扱えるので、仕組みを増やさずに済む。
+ */
+export interface Part extends Base {
+  name: string
+  /** null なら置くときに長さを入力する */
+  durationMin: number | null
+  tagId: Id | null
+  kind: BlockKind
+  order: number
+  /** 可変長のとき、前回置いた長さ。次に置くときの初期値にする。 */
+  lastDurationMin: number | null
+}
+
+/**
+ * 一日の帯に置かれたひとつ。
+ *
+ * 部品から置いても中身はここにコピーされる。
+ * 部品をあとから直しても、すでに置いた予定は変わらない。
+ */
+export interface Block extends Base {
+  /** YYYY-MM-DD。端末の時計のずれで日付が動かないよう、文字列で持つ */
+  date: string
+  /** 0:00 からの分。24時を超える値を許す（翌1:00 なら 1500） */
+  startMin: number
+  durationMin: number
+  title: string
+  tagId: Id | null
+  kind: BlockKind
+  /** どの部品から置かれたか。記録のためだけで、参照は追わない */
+  partId: Id | null
+}
+
+/** 一日の並びをまるごと保存したもの */
+export interface Template extends Base {
+  name: string
+  order: number
+}
+
+/** 型の中身。Block から date を外し、templateId を付けただけ。 */
+export interface TemplateBlock extends Base {
+  templateId: Id
+  startMin: number
+  durationMin: number
+  title: string
+  tagId: Id | null
+  kind: BlockKind
+  partId: Id | null
+}
+
+/** その日だけ枠を変えたいとき（遅く起きた日・夜更かしする日） */
+export interface Day extends Base {
+  /** YYYY-MM-DD */
+  id: string
+  startMin: number
+  endMin: number
 }
 
 /**

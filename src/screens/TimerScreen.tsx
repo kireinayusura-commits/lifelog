@@ -7,6 +7,7 @@ import { isFromWatch } from '../timer/logic'
 import { TagPicker, useTags } from '../components/TagPicker'
 import { Button, Card, Dot, Field, Modal, inputClass } from '../components/ui'
 import { SessionEditModal, type SessionTarget } from '../components/SessionEditModal'
+import { NowBlock } from '../components/NowBlock'
 import {
   formatClock,
   formatDuration,
@@ -93,6 +94,16 @@ export function TimerScreen() {
   return (
     <div className="min-h-full">
       <div className="safe-top px-4 pt-2 pb-6">
+        {/* ---- 予定とのつなぎ ---- */}
+        <NowBlock
+          running={!!active}
+          onStart={async (tagId) => {
+            setPendingTag(tagId)
+            const r = await requestStart(tagId)
+            if (r === 'foreign') setTakeOverOpen(true)
+          }}
+        />
+
         {/* ---- 計測パネル ---- */}
         <Card className="overflow-hidden">
           <div className="px-5 pt-6 pb-5 text-center">

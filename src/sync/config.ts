@@ -23,6 +23,11 @@ export const SYNCED_KINDS = [
   'recurring',
   'settings',
   'activeTimer',
+  'parts',
+  'blocks',
+  'templates',
+  'templateBlocks',
+  'days',
 ] as const
 
 export type SyncKind = (typeof SYNCED_KINDS)[number]
